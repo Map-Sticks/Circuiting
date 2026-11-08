@@ -486,6 +486,8 @@ namespace Circuiting.UI.DockablePanel
         void ICircuitTreeActions.DeleteChassis(BoardData board, ChassisData chassis) => OnDeleteChassis(board, chassis);
         void ICircuitTreeActions.EditRow(CircuitRowViewModel row) => OnEditRow(row);
         void ICircuitTreeActions.DeleteCircuit(ChassisData chassis, CircuitData circuit) => OnDeleteCircuit(chassis, circuit);
+        void ICircuitTreeActions.MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit) =>
+            OnMoveCircuit(board, chassis, circuit);
         void ICircuitTreeActions.AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit) =>
             OnAssignFixtures(board, chassis, circuit);
         void ICircuitTreeActions.AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole) =>

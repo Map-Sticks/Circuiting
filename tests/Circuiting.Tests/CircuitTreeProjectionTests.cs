@@ -99,6 +99,7 @@ public class CircuitTreeProjectionTests
         Assert.True(row.RightCommands!.HasCircuit);
         Assert.True(row.RightCommands.HasFixtures);
         Assert.False(row.LeftCommands!.HasCircuit);
+        Assert.Null(row.LeftCommands.MoveCommand);
 
         node.RenameCommand.Execute(null);
         Assert.Equal(("rename", board), (actions.Action, actions.Target));
@@ -106,6 +107,10 @@ public class CircuitTreeProjectionTests
         Assert.Equal(("edit-chassis", chassis), (actions.Action, actions.Target));
         row.RightCommands.DeleteCommand!.Execute(null);
         Assert.Equal(("delete-circuit", circuit), (actions.Action, actions.Target));
+        row.RightCommands.MoveCommand!.Execute(null);
+        Assert.Equal(("move-circuit", circuit), (actions.Action, actions.Target));
+        chassisNode.Rows[0].RightCommands!.MoveCommand!.Execute(null);
+        Assert.Equal(("move-circuit", circuit), (actions.Action, actions.Target));
         row.LeftCommands.AssignCommand.Execute(null);
         Assert.Equal(("assign-spare", row.Left), (actions.Action, actions.Target));
         row.EditCommand!.Execute(null);
@@ -126,6 +131,7 @@ public class CircuitTreeProjectionTests
         public void DeleteChassis(BoardData board, ChassisData chassis) => Record("delete-chassis", chassis);
         public void EditRow(CircuitRowViewModel row) => Record("edit-row", row);
         public void DeleteCircuit(ChassisData chassis, CircuitData circuit) => Record("delete-circuit", circuit);
+        public void MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit) => Record("move-circuit", circuit);
         public void AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit) => Record("assign", circuit);
         public void AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole) =>
             Record("assign-spare", pole);

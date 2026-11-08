@@ -46,6 +46,15 @@ poles before changing their chassis to single phase.
 Legacy chassis with one or two phase labels retain that pattern when edited;
 the chassis dialog offers an explicit option to remove it.
 
+- **Move Left/Right** in a circuit row's context menu opens a destination picker.
+  Alternatively, hold **Alt** and drag a circuit with the left mouse button onto
+  the desired left or right position. Collapsed boards and chassis expand when
+  dragged over. Moves work across chassis and boards and preserve circuit identity,
+  details, and fixtures. Occupied positions are never overwritten or swapped.
+  All poles must fit; multi-pole destinations must start on the first phase of
+  a three-phase chassis. Dragging a consumed pole moves its parent circuit.
+  Moves update fixture references in the save transaction and support panel
+  Undo/Redo. Esc cancels a drag; Cancel closes the destination picker unchanged.
 - **Assign Fixtures** highlights eligible lighting fixtures, electrical
   fixtures, and electrical equipment in the active model view. Select
   elements and click **Finish**; Esc cancels the selection. Existing

@@ -8,6 +8,33 @@ namespace Circuiting.Tests;
 public class FixtureAssignmentSynchronizerTests
 {
     [Fact]
+    public void MovingAcrossBoardsUpdatesFixtureStorageAndUndoRestoresIt()
+    {
+        var (original, fixture, assignment) = Project();
+        var store = new FakeStore(fixture, assignment);
+        var next = Clone(original);
+        var source = next.Boards[0].Chassis[0];
+        var destination = CircuitLayoutTests.Chassis(12);
+        destination.Prefix = "NEW";
+        var board = CircuitLayoutTests.Board(destination);
+        next.Boards.Add(board);
+        CircuitLayout.Move(source, source.Circuits[0], board, destination, 5);
+        next = Clone(next);
+
+        FixtureAssignmentSynchronizer.Synchronize(Clone(original), next, store);
+
+        Assert.Equal(board.BoardGuid, store.Assignment?.BoardGuid);
+        Assert.Equal(destination.ChassisGuid, store.Assignment?.ChassisGuid);
+        Assert.Equal(assignment.CircuitGuid, store.Assignment?.CircuitGuid);
+        Assert.Equal(assignment.FixtureGuid, store.Assignment?.FixtureGuid);
+        Assert.Equal(next.Boards[1].Chassis[0].Circuits[0].DisplayLabel, store.Assignment?.CircuitReference);
+        FixtureAssignmentSynchronizer.Synchronize(next, Clone(original), store);
+        Assert.Equal(assignment.BoardGuid, store.Assignment?.BoardGuid);
+        Assert.Equal(assignment.ChassisGuid, store.Assignment?.ChassisGuid);
+        Assert.Equal(assignment.CircuitReference, store.Assignment?.CircuitReference);
+    }
+
+    [Fact]
     public void DeletingAndUndoingAssignmentClearsAndRestoresFixtureStorage()
     {
         var (original, fixture, assignment) = Project();

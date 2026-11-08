@@ -5,6 +5,60 @@ namespace Circuiting.Services
 {
     public static class CircuitLayout
     {
+        public static string? GetMoveError(ChassisData source, CircuitData circuit,
+            BoardData destinationBoard, ChassisData destination, int poleIndex)
+        {
+            if (!source.Circuits.Contains(circuit))
+                return "The source circuit no longer belongs to its chassis.";
+            if (!destinationBoard.Chassis.Contains(destination))
+                return "The destination chassis no longer belongs to its board.";
+            List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(destinationBoard, destination);
+            PoleAssignment? position = assignments.FirstOrDefault(a => a.PoleIndex == poleIndex);
+            if (position == null) return "The destination position is outside the chassis.";
+            if (circuit.Poles < 1 || circuit.Poles > 3) return "The circuit has an invalid pole count.";
+            if (ReferenceEquals(source, destination) && circuit.PoleIndex == poleIndex) return null;
+            if (circuit.Poles > 1 && (destination.PhaseLabels.Count < 3 ||
+                !IsValidMultiPoleStart(position, destination, circuit.Poles, assignments)))
+                return "A multi-pole circuit must start on the first phase of a three-phase chassis and fit on the same side.";
+
+            HashSet<int> occupied = new HashSet<int>();
+            foreach (CircuitData other in destination.Circuits)
+            {
+                if (ReferenceEquals(source, destination) && ReferenceEquals(other, circuit)) continue;
+                if (!other.PoleIndex.HasValue) return "A destination circuit has no pole position.";
+                for (int i = 0; i < other.Poles; i++)
+                    occupied.Add(checked(other.PoleIndex.Value + i * 2));
+            }
+            for (int i = 0; i < circuit.Poles; i++)
+            {
+                int index = checked(poleIndex + i * 2);
+                if (!assignments.Any(a => a.PoleIndex == index))
+                    return "The circuit exceeds the destination chassis.";
+                if (occupied.Contains(index))
+                    return "The destination is occupied. Choose free positions for all circuit poles.";
+            }
+            return null;
+        }
+
+        public static bool Move(ChassisData source, CircuitData circuit,
+            BoardData destinationBoard, ChassisData destination, int poleIndex)
+        {
+            string? error = GetMoveError(source, circuit, destinationBoard, destination, poleIndex);
+            if (error != null) throw new InvalidDataException(error);
+            if (ReferenceEquals(source, destination) && circuit.PoleIndex == poleIndex) return false;
+            PoleAssignment position = CircuitLabelCalculator.Calculate(destinationBoard, destination)
+                .Single(a => a.PoleIndex == poleIndex);
+            if (!ReferenceEquals(source, destination))
+            {
+                source.Circuits.Remove(circuit);
+                destination.Circuits.Add(circuit);
+            }
+            circuit.PoleIndex = poleIndex;
+            circuit.DisplayLabel = position.DisplayLabel;
+            circuit.CircuitNumber = position.CircuitNumber;
+            return true;
+        }
+
         public static void MigrateLegacyPositions(ChassisData chassis)
         {
             List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(chassis);

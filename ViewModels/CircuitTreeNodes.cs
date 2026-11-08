@@ -16,6 +16,7 @@ namespace Circuiting.ViewModels
         void DeleteChassis(BoardData board, ChassisData chassis);
         void EditRow(CircuitRowViewModel row);
         void DeleteCircuit(ChassisData chassis, CircuitData circuit);
+        void MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit);
         void AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
         void AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole);
         void SelectFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
@@ -95,6 +96,7 @@ namespace Circuiting.ViewModels
             string side = pole.Side == Side.Left ? "Left" : "Right";
             string suffix = consumed == null ? string.Empty : $" (multi-pole from {label})";
             DeleteLabel = $"🗑️  Delete {side} — {label}{suffix}";
+            MoveLabel = $"Move {side} - {label}{suffix}";
             AssignLabel = $"📌  Assign Fixtures — {label}" + (circuit == null ? " (spare)" : string.Empty);
             SelectLabel = $"👁️  Select in Model — {label} ({circuit?.Fixtures.Count ?? 0})";
             RemoveLabel = $"🔗  Pick Fixtures to Remove — {label}";
@@ -105,11 +107,13 @@ namespace Circuiting.ViewModels
                 : new RelayCommand(() => actions.AssignFixtures(board, chassis, circuit));
             if (circuit == null) return;
             DeleteCommand = new RelayCommand(() => actions.DeleteCircuit(chassis, circuit));
+            MoveCommand = new RelayCommand(() => actions.MoveCircuit(board, chassis, circuit));
             SelectCommand = new RelayCommand(() => actions.SelectFixtures(board, chassis, circuit));
             RemoveCommand = new RelayCommand(() => actions.RemoveFixtures(board, chassis, circuit));
         }
 
         public string DeleteLabel { get; }
+        public string MoveLabel { get; }
         public string AssignLabel { get; }
         public string SelectLabel { get; }
         public string RemoveLabel { get; }
@@ -117,6 +121,7 @@ namespace Circuiting.ViewModels
         public bool HasFixtures { get; }
         public IRelayCommand AssignCommand { get; }
         public IRelayCommand? DeleteCommand { get; }
+        public IRelayCommand? MoveCommand { get; }
         public IRelayCommand? SelectCommand { get; }
         public IRelayCommand? RemoveCommand { get; }
     }

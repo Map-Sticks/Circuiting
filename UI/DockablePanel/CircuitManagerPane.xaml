@@ -61,9 +61,15 @@
             </Style.Triggers>
         </Style>
         <DataTemplate DataType="{x:Type viewModels:CircuitRowViewModel}">
-            <Grid Background="Transparent" Loaded="TreeHeader_Loaded" MouseLeftButtonDown="CircuitRow_MouseLeftButtonDown">
+            <Grid Background="Transparent" Loaded="TreeHeader_Loaded" MouseLeftButtonDown="CircuitRow_MouseLeftButtonDown"
+                  PreviewMouseLeftButtonDown="CircuitRow_PreviewMouseLeftButtonDown"
+                  PreviewMouseLeftButtonUp="CircuitRow_PreviewMouseLeftButtonUp"
+                  PreviewMouseMove="CircuitRow_PreviewMouseMove"
+                  AllowDrop="True" DragOver="CircuitRow_DragOver" Drop="CircuitRow_Drop">
                 <Grid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="{Binding LeftCommands.MoveLabel}" Command="{Binding LeftCommands.MoveCommand}"
+                                  Visibility="{Binding LeftCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding LeftCommands.DeleteLabel}" Command="{Binding LeftCommands.DeleteCommand}"
                                   Visibility="{Binding LeftCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding LeftCommands.AssignLabel}" Command="{Binding LeftCommands.AssignCommand}"/>
@@ -72,6 +78,8 @@
                         <MenuItem Header="{Binding LeftCommands.RemoveLabel}" Command="{Binding LeftCommands.RemoveCommand}"
                                   Visibility="{Binding LeftCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
                         <Separator/>
+                        <MenuItem Header="{Binding RightCommands.MoveLabel}" Command="{Binding RightCommands.MoveCommand}"
+                                  Visibility="{Binding RightCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.DeleteLabel}" Command="{Binding RightCommands.DeleteCommand}"
                                   Visibility="{Binding RightCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.AssignLabel}" Command="{Binding RightCommands.AssignCommand}"/>
@@ -252,7 +260,10 @@
                   Background="#1E1E1E"
                   Foreground="White"
                   BorderThickness="0"
-                  Padding="4"/>
+                  Padding="4"
+                  AllowDrop="True"
+                  PreviewDragOver="BoardTree_PreviewDragOver"
+                  DragOver="BoardTree_DragOver"/>
 
         <!-- Status Bar -->
         <Border Grid.Row="3" Background="#2D2D2D" Padding="10,5">
