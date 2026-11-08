@@ -23,7 +23,28 @@ namespace Circuiting.Services
         public static bool HasDetails(CircuitData circuit) =>
             !string.IsNullOrWhiteSpace(circuit.Description) || !string.IsNullOrEmpty(circuit.BreakerSize) ||
             !string.IsNullOrEmpty(circuit.ProtectionType) || !string.IsNullOrEmpty(circuit.EarthLeakage) ||
+            !string.IsNullOrEmpty(circuit.TripCurve) || !string.IsNullOrWhiteSpace(circuit.TripSetting) ||
             circuit.Poles > 1;
+
+        /// <summary>Breaker size with its trip curve, e.g. "C16A"; "Type C" when only the curve is set.</summary>
+        public static string BreakerText(CircuitData circuit)
+        {
+            string size = circuit.BreakerSize ?? string.Empty;
+            string curve = circuit.TripCurve ?? string.Empty;
+            if (curve.Length == 0) return size;
+            return size.Length == 0 ? $"Type {curve}" : curve + size;
+        }
+
+        /// <summary>Copies the editable circuit properties (not identity, position or elements).</summary>
+        public static void CopyDetails(CircuitData from, CircuitData to)
+        {
+            to.Description = from.Description;
+            to.BreakerSize = from.BreakerSize;
+            to.ProtectionType = from.ProtectionType;
+            to.EarthLeakage = from.EarthLeakage;
+            to.TripCurve = from.TripCurve;
+            to.TripSetting = from.TripSetting;
+        }
 
         public static string SpareSummary(CircuitData circuit)
         {
@@ -33,7 +54,8 @@ namespace Circuiting.Services
             string protection = string.IsNullOrEmpty(circuit.ProtectionType) ? string.Empty
                 : circuit.ProtectionType == "MCB" || string.IsNullOrEmpty(circuit.EarthLeakage)
                     ? circuit.ProtectionType : $"{circuit.EarthLeakage} {circuit.ProtectionType}";
-            string rating = $"{circuit.BreakerSize} {protection}".Trim();
+            string rating = $"{BreakerText(circuit)} {protection}".Trim();
+            if (!string.IsNullOrWhiteSpace(circuit.TripSetting)) rating = $"{rating} {circuit.TripSetting.Trim()}".Trim();
             if (rating.Length > 0) parts.Add(rating);
             return parts.Count == 0 ? circuit.DisplayLabel : $"{circuit.DisplayLabel} ({string.Join(", ", parts)})";
         }

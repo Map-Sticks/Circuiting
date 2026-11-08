@@ -90,10 +90,7 @@ namespace Circuiting.Services
             };
             if (target.CreatesCircuit && details != null)
             {
-                circuit.Description = details.Description;
-                circuit.BreakerSize = details.BreakerSize;
-                circuit.ProtectionType = details.ProtectionType;
-                circuit.EarthLeakage = details.EarthLeakage;
+                CircuitLayout.CopyDetails(details, circuit);
             }
             if (target.Circuit == null) destination.Circuits.Add(circuit);
 
@@ -133,10 +130,7 @@ namespace Circuiting.Services
             };
             if (target.CreatesCircuit && details != null)
             {
-                circuit.Description = details.Description;
-                circuit.BreakerSize = details.BreakerSize;
-                circuit.ProtectionType = details.ProtectionType;
-                circuit.EarthLeakage = details.EarthLeakage;
+                CircuitLayout.CopyDetails(details, circuit);
             }
             if (target.Circuit == null) destination.Circuits.Add(circuit);
 

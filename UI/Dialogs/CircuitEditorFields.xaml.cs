@@ -11,6 +11,7 @@ namespace Circuiting.UI.Dialogs
         private string[] _breakerOptions = CircuitOptions.BreakerSizes;
         private string[] _protectionOptions = CircuitOptions.ProtectionTypes;
         private string[] _leakageOptions = CircuitOptions.EarthLeakages;
+        private string[] _tripCurveOptions = CircuitOptions.TripCurves;
 
         public CircuitEditorFields()
         {
@@ -29,6 +30,9 @@ namespace Circuiting.UI.Dialogs
             SetOptions(BreakerCombo, _breakerOptions, existing?.BreakerSize);
             SetOptions(ProtectionCombo, _protectionOptions, existing?.ProtectionType);
             SetOptions(LeakageCombo, _leakageOptions, existing?.EarthLeakage);
+            _tripCurveOptions = CircuitFieldOptions.IncludeCurrent(CircuitOptions.TripCurves, existing?.TripCurve);
+            SetOptions(TripCurveCombo, _tripCurveOptions, existing?.TripCurve);
+            TripSettingBox.Text = existing?.TripSetting ?? string.Empty;
             PolesCombo.ItemsSource = CircuitFieldOptions.Poles(allowMultiPole, existing?.Poles);
             PolesCombo.SelectedItem = existing?.Poles ?? 1;
             if (PolesCombo.SelectedIndex < 0) PolesCombo.SelectedIndex = 0;
@@ -39,7 +43,8 @@ namespace Circuiting.UI.Dialogs
 
         public bool HasData => _existing != null || !string.IsNullOrWhiteSpace(DescriptionBox.Text) ||
             BreakerCombo.SelectedIndex > 0 || ProtectionCombo.SelectedIndex > 0 ||
-            LeakageCombo.SelectedIndex > 0 || (PolesCombo.SelectedItem is int poles && poles > 1);
+            LeakageCombo.SelectedIndex > 0 || TripCurveCombo.SelectedIndex > 0 ||
+            !string.IsNullOrWhiteSpace(TripSettingBox.Text) || (PolesCombo.SelectedItem is int poles && poles > 1);
 
         public CircuitData CreateResult()
         {
@@ -53,6 +58,8 @@ namespace Circuiting.UI.Dialogs
                 BreakerSize = Value(BreakerCombo, _breakerOptions),
                 ProtectionType = Value(ProtectionCombo, _protectionOptions),
                 EarthLeakage = Value(LeakageCombo, _leakageOptions),
+                TripCurve = Value(TripCurveCombo, _tripCurveOptions),
+                TripSetting = TripSettingBox.Text.Trim(),
                 Poles = PolesCombo.SelectedItem is int poles
                     ? poles : throw new InvalidOperationException("Select a pole count."),
                 Fixtures = _existing?.Fixtures ?? new List<CircuitedFixture>()

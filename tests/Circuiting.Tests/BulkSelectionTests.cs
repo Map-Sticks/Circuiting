@@ -16,7 +16,7 @@ public class BulkSelectionTests
     private static CircuitRef Ref(BoardData board, ChassisData chassis, CircuitData circuit) =>
         new() { Board = board, Chassis = chassis, Circuit = circuit };
 
-    private static TreeSelection NewSelection() => new(() => { }, () => { });
+    private static TreeSelection NewSelection() => new(() => { }, () => { }, () => { });
 
     // ─── TreeSelection ───────────────────────────────────
 
@@ -299,6 +299,160 @@ public class BulkSelectionTests
 
         var again = BulkCircuitOperations.ResolveFixtures(new[] { board }, new[] { a.FixtureGuid, b.FixtureGuid });
         Assert.ThrowsAny<Exception>(() => FixtureMover.MoveMany(again, board, chassis, 0, null));
+    }
+
+    // ─── Bulk edit ───────────────────────────────────────
+
+    [Fact]
+    public void BulkEditSetsOnlyTheTickedPropertiesAndCountsChangedCircuits()
+    {
+        var chassis = CircuitLayoutTests.Chassis(12);
+        var board = CircuitLayoutTests.Board(chassis);
+        var occupied = Circuit(0, Fixture());
+        occupied.Description = "Lights";
+        occupied.BreakerSize = "10A";
+        occupied.EarthLeakage = "30mA";
+        var spare = Circuit(1);
+        spare.Description = "Spare";
+        var already = Circuit(2, Fixture());
+        already.BreakerSize = "16A";
+        already.ProtectionType = "RCBO";
+        chassis.Circuits.AddRange(new[] { occupied, spare, already });
+        var refs = new[] { occupied, spare, already }.Select(c => Ref(board, chassis, c)).ToList();
+
+        var edit = new BulkCircuitEdit { BreakerSize = "16A", ProtectionType = "RCBO", EarthLeakage = string.Empty };
+        Assert.True(edit.HasChanges);
+        Assert.Equal(2, BulkCircuitOperations.ApplyEdit(refs, edit));
+
+        Assert.All(refs, r => Assert.Equal("16A", r.Circuit.BreakerSize));
+        Assert.All(refs, r => Assert.Equal("RCBO", r.Circuit.ProtectionType));
+        Assert.Equal(string.Empty, occupied.EarthLeakage);
+        Assert.Equal("Lights", occupied.Description);
+        Assert.Equal("Spare", spare.Description);
+        Assert.Single(occupied.Fixtures);
+        Assert.False(new BulkCircuitEdit().HasChanges);
+    }
+
+    [Fact]
+    public void BulkEditSetsTripCurveAndTripSettingAndCanClearThem()
+    {
+        var chassis = CircuitLayoutTests.Chassis(12);
+        var board = CircuitLayoutTests.Board(chassis);
+        var a = Circuit(0, Fixture());
+        a.TripCurve = "B";
+        a.TripSetting = "Ir 0.8×In";
+        var b = Circuit(1, Fixture());
+        b.BreakerSize = "32A";
+        chassis.Circuits.AddRange(new[] { a, b });
+        var refs = new[] { a, b }.Select(c => Ref(board, chassis, c)).ToList();
+
+        var curveOnly = new BulkCircuitEdit { TripCurve = "C" };
+        Assert.True(curveOnly.HasChanges);
+        Assert.Equal(2, BulkCircuitOperations.ApplyEdit(refs, curveOnly));
+        Assert.All(refs, r => Assert.Equal("C", r.Circuit.TripCurve));
+        Assert.Equal("Ir 0.8×In", a.TripSetting);
+        Assert.Equal("32A", b.BreakerSize);
+        Assert.False(curveOnly.WouldChange(a));
+
+        var setting = new BulkCircuitEdit { TripSetting = "Ir 1.0×In, Isd 6×Ir" };
+        Assert.Equal(2, BulkCircuitOperations.ApplyEdit(refs, setting));
+        Assert.All(refs, r => Assert.Equal("Ir 1.0×In, Isd 6×Ir", r.Circuit.TripSetting));
+
+        var clear = new BulkCircuitEdit { TripCurve = string.Empty, TripSetting = string.Empty };
+        Assert.Equal(2, BulkCircuitOperations.ApplyEdit(refs, clear));
+        Assert.All(refs, r => Assert.Equal(string.Empty, r.Circuit.TripCurve + r.Circuit.TripSetting));
+    }
+
+    [Fact]
+    public void TripDetailsKeepASpareAndShowWithTheBreaker()
+    {
+        var chassis = CircuitLayoutTests.Chassis(12);
+        var board = CircuitLayoutTests.Board(chassis);
+        var spare = Circuit(0);
+        Assert.False(CircuitLayout.HasDetails(spare));
+        spare.TripCurve = "D";
+        Assert.True(CircuitLayout.HasDetails(spare));
+        Assert.Equal("Type D", CircuitLayout.BreakerText(spare));
+        spare.BreakerSize = "20A";
+        Assert.Equal("D20A", CircuitLayout.BreakerText(spare));
+        spare.TripCurve = string.Empty;
+        spare.TripSetting = "Ir 0.9×In";
+        Assert.True(CircuitLayout.HasDetails(spare));
+        Assert.Equal("20A", CircuitLayout.BreakerText(spare));
+
+        spare.TripCurve = "C";
+        chassis.Circuits.Add(spare);
+        CircuitLayout.ValidateAndUpdate(board, chassis);
+        Assert.Contains("C20A", CircuitLayout.SpareSummary(spare));
+        Assert.Contains("Ir 0.9×In", CircuitLayout.SpareSummary(spare));
+
+        var tree = CircuitTreeProjection.Build(new[] { board }, new CircuitTreeProjectionTests.RecordingActions(),
+            new HashSet<Guid> { board.BoardGuid, chassis.ChassisGuid });
+        CircuitSideViewModel side = tree[0].Chassis[0].Rows[0].LeftDisplay;
+        Assert.Equal("C20A", side.Breaker);
+        Assert.Equal("Trip curve: C\nTrip setting: Ir 0.9×In", side.TripToolTip);
+        Assert.Null(tree[0].Chassis[0].Rows[0].RightDisplay.TripToolTip);
+
+        Assert.True(new CircuitSearch("C20A", CircuitSearchScope.Circuits).MatchesCircuit(spare));
+        Assert.False(new CircuitSearch("Isd", CircuitSearchScope.Circuits).MatchesCircuit(spare));
+        Assert.True(new CircuitSearch("0.9", CircuitSearchScope.Circuits).MatchesCircuit(spare));
+    }
+
+    [Fact]
+    public void MovingAnElementOntoASpaceCopiesTheTripDetails()
+    {
+        var chassis = CircuitLayoutTests.Chassis(12);
+        var board = CircuitLayoutTests.Board(chassis);
+        var light = Fixture();
+        var source = Circuit(0, light, Fixture());
+        chassis.Circuits.Add(source);
+        CircuitLayout.ValidateAndUpdate(board, chassis);
+
+        CircuitData created = FixtureMover.Move(chassis, source, light, board, chassis, 4,
+            new CircuitData { BreakerSize = "16A", TripCurve = "B", TripSetting = "fixed" });
+
+        Assert.Equal("B", created.TripCurve);
+        Assert.Equal("fixed", created.TripSetting);
+    }
+
+    [Fact]
+    public void CommonValueIsSharedValueOrNull()
+    {
+        var a = new CircuitData { BreakerSize = "20A", ProtectionType = "MCB" };
+        var b = new CircuitData { BreakerSize = "20A", ProtectionType = "RCBO" };
+
+        Assert.Equal("20A", BulkCircuitEdit.Common(new[] { a, b }, c => c.BreakerSize));
+        Assert.Null(BulkCircuitEdit.Common(new[] { a, b }, c => c.ProtectionType));
+        Assert.Equal(string.Empty, BulkCircuitEdit.Common(new[] { a, b }, c => c.EarthLeakage));
+    }
+
+    // ─── Board selection ─────────────────────────────────
+
+    [Fact]
+    public void BoardsCanBeRangeSelectedHighlightedAndRemoved()
+    {
+        var boards = Enumerable.Range(0, 4).Select(_ => CircuitLayoutTests.Board(CircuitLayoutTests.Chassis(6))).ToList();
+        boards[1].Chassis[0].Circuits.Add(Circuit(0, Fixture(), Fixture()));
+        var tree = CircuitTreeProjection.Build(boards, new CircuitTreeProjectionTests.RecordingActions(),
+            new HashSet<Guid>());
+        var selection = NewSelection();
+        List<Guid> order = TreeSelection.BoardOrder(tree);
+
+        selection.Click(TreeSelectionKind.Boards, order[1], order, false, false);
+        selection.Click(TreeSelectionKind.Boards, order[2], order, ctrl: false, shift: true);
+        selection.ApplyTo(tree);
+
+        Assert.True(selection.HasBoards);
+        Assert.True(selection.HasMultipleBoards);
+        Assert.False(selection.HasMultipleCircuits);
+        Assert.Equal(new[] { false, true, true, false }, tree.Select(n => n.IsSelected));
+        Assert.Contains("2 boards", selection.Summary);
+        Assert.Equal(2, BulkCircuitOperations.CountFixtures(boards[1]));
+
+        List<BoardData> removed = BulkCircuitOperations.RemoveBoards(boards, selection.Keys.ToList());
+        Assert.Equal(2, removed.Count);
+        Assert.Equal(2, boards.Count);
+        Assert.DoesNotContain(boards, b => selection.Contains(b.BoardGuid));
     }
 
     // ─── Bulk picker ─────────────────────────────────────

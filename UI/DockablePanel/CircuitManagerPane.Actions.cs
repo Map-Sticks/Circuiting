@@ -485,7 +485,8 @@ namespace Circuiting.UI.DockablePanel
             if (!dialog.Confirmed) return;
             if (!IsCurrentProject(project)) return;
             if (!dialog.ApplyBreaker && !dialog.ApplyProtection &&
-                !dialog.ApplyLeakage && !dialog.ApplyDescription)
+                !dialog.ApplyLeakage && !dialog.ApplyDescription &&
+                !dialog.ApplyTripCurve && !dialog.ApplyTripSetting)
             {
                 StatusLabel.Text = "No bulk edit fields selected.";
                 return;
@@ -533,6 +534,10 @@ namespace Circuiting.UI.DockablePanel
                     existing.EarthLeakage = dialog.EarthLeakage;
                 if (dialog.ApplyDescription)
                     existing.Description = dialog.Description;
+                if (dialog.ApplyTripCurve)
+                    existing.TripCurve = dialog.TripCurve;
+                if (dialog.ApplyTripSetting)
+                    existing.TripSetting = dialog.TripSetting;
             }
 
             SaveAndRefresh();

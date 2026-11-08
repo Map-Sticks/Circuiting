@@ -197,6 +197,40 @@ public class ProjectDataSerializerTests
         Assert.Throws<InvalidDataException>(() => ProjectDataSerializer.Deserialize(root.ToString()));
     }
 
+    [Fact]
+    public void TripDetailsRoundTripAndProjectsSavedBeforeThemStillLoad()
+    {
+        var chassis = CircuitLayoutTests.Chassis(6);
+        chassis.Circuits.Add(new CircuitData
+        {
+            CircuitGuid = Guid.NewGuid(), PoleIndex = 0, BreakerSize = "16A", TripCurve = "C",
+            TripSetting = "Ir 0.8×In",
+            Fixtures = new List<CircuitedFixture>
+            {
+                new CircuitedFixture { FixtureGuid = Guid.NewGuid(), RevitUniqueId = "fixture" }
+            }
+        });
+        var project = new ProjectData { Boards = new List<BoardData> { CircuitLayoutTests.Board(chassis) } };
+        string json = ProjectDataSerializer.Serialize(project);
+
+        CircuitData loaded = ProjectDataSerializer.Deserialize(json).Boards[0].Chassis[0].Circuits[0];
+        Assert.Equal("C", loaded.TripCurve);
+        Assert.Equal("Ir 0.8×In", loaded.TripSetting);
+
+        var root = JObject.Parse(json);
+        var circuit = (JObject)root["Boards"]![0]!["Chassis"]![0]!["Circuits"]![0]!;
+        circuit.Remove("TripCurve");
+        circuit.Remove("TripSetting");
+        CircuitData old = ProjectDataSerializer.Deserialize(root.ToString()).Boards[0].Chassis[0].Circuits[0];
+        Assert.Equal(string.Empty, old.TripCurve);
+        Assert.Equal(string.Empty, old.TripSetting);
+
+        circuit["TripCurve"] = JValue.CreateNull();
+        Assert.Throws<InvalidDataException>(() => ProjectDataSerializer.Deserialize(root.ToString()));
+        circuit["TripCurve"] = 3;
+        Assert.Throws<InvalidDataException>(() => ProjectDataSerializer.Deserialize(root.ToString()));
+    }
+
     [Theory]
     [InlineData("Supply")]
     [InlineData("ShowPhaseLabel")]

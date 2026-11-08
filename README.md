@@ -68,8 +68,8 @@ the chassis dialog offers an explicit option to remove it.
   skipped. Copies are inserted after the source board and support Undo.
 - **Search** (below the toolbar, or Ctrl+F) filters the tree as you type. The
   filter list limits it to **DBs**, **Chassis**, or **Circuits**; **All** searches
-  every type. Circuits match on label, number, description, breaker, protection
-  and earth leakage; every word must match (e.g. `16A RCBO`). A matching DB or
+  every type. Circuits match on label, number, description, breaker, protection,
+  earth leakage, trip curve and trip setting; every word must match (e.g. `16A RCBO`). A matching DB or
   chassis shows all its contents; otherwise only rows with matching circuits are
   shown, with every pole of a multi-pole circuit. Matches are highlighted and
   counted in the status bar. Enter applies immediately, Esc or ✕ clears and
@@ -127,21 +127,35 @@ the chassis dialog offers an explicit option to remove it.
   protection (pre-filled with the spare's saved details). Moving the last
   element off a circuit leaves it as a spare if it has saved details,
   otherwise as a space. Moves are saved to the elements and can be undone.
-- **Select several circuits or elements**: click a circuit side or an
-  element row to select it, **Ctrl**+click to add or remove items, and
+- **Select several boards, circuits or elements**: click a board name, a
+  circuit side or an element row to select it, **Ctrl**+click to add or remove items, and
   **Shift**+click to select the range from the last clicked item (in visible
-  tree order; **Ctrl+Shift** adds the range). A selection holds either circuits
-  or elements. Right-click a selected item for **Move N Selected...** and
+  tree order; **Ctrl+Shift** adds the range). A selection holds one kind:
+  boards, circuits or elements. Right-click a selected item for **Move N Selected...** and
   **Delete N Selected Circuits** / **Unassign N Selected Elements**, or press
   **Delete**; **Esc** clears the selection. Alt-dragging a selected item drags
   the whole selection. Bulk-moved circuits keep their order: the first lands
   on the chosen position and the rest take the next free positions where they
   fit. Bulk-moved elements all go to one circuit (a spare or space becomes a
   new circuit). Unassigning elements keeps them in the model.
+- **Bulk edit circuits**: select several circuits, right-click one and choose
+  **Edit N Selected Circuits...**. Tick the properties to set (breaker size,
+  protection, earth leakage, trip curve, trip setting, description);
+  unticked properties are left unchanged, values shared by all selected circuits are pre-filled, and
+  **(none)** clears a value. Spares stay spares and assigned elements are kept.
+- **Trip settings**: each circuit stores a **trip curve** (B, C, D, K or Z) and
+  a free-text **trip setting** for adjustable breakers (e.g. `Ir 0.8×In,
+  Isd 6×Ir`). Set them in the circuit editor, the selected-circuits bulk edit
+  or the chassis bulk edit. The breaker column shows the curve with the size
+  (e.g. `C16A`) and its tooltip shows both values. Projects saved before these
+  fields existed load with them empty.
 - Deleting a circuit can unassign its fixtures or move them to another
   existing circuit. Deleting a chassis or board, clearing a chassis, and
-  **Clear All** unassign their referenced fixtures. **Clear All** requires two
-  confirmations.
+  **Clear All** unassign their referenced fixtures. With boards selected the
+  button reads **Clear Selected (N)** and deletes only those boards (the
+  Delete key and the board right-click menu do the same). With no boards
+  selected it asks whether to clear all boards (Cancel lets you select boards
+  first) and then requires a second confirmation.
 - **Validate Model** previews fixture repairs before applying them.
   **Resolution Rules** configures copied- and deleted-fixture handling.
   The AUTO/MANUAL toggle controls automatic reconciliation.
@@ -298,3 +312,12 @@ Run on a disposable copy of a model in each supported Revit version:
     spares with details), bulk move elements onto a circuit and onto a space,
     bulk delete circuits and unassign elements via the menu and the Delete
     key, Esc to clear, and Undo after each.
+17. Bulk edit and board selection: select circuits (including spares and a
+    3-pole circuit), Edit N Selected Circuits, set breaker/protection/earth
+    leakage/trip curve/trip setting, clear a value with (none) or an empty
+    trip setting, check the breaker column (`C16A`) and its tooltip, reopen
+    a project saved before trip fields existed, confirm unticked values and assigned
+    elements are untouched, and Undo. Click/Ctrl/Shift+click board names,
+    confirm the highlight and the **Clear Selected (N)** button, clear only the
+    selected boards (and via the Delete key and right-click menu), confirm the
+    no-selection prompt offers Clear All with Cancel, and Undo.

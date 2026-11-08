@@ -17,7 +17,18 @@
         <HierarchicalDataTemplate DataType="{x:Type viewModels:BoardTreeNode}"
                                   ItemsSource="{Binding Chassis}"
                                   ItemContainerStyle="{StaticResource CircuitTreeItemStyle}">
-            <StackPanel Orientation="Horizontal" Loaded="TreeHeader_Loaded">
+            <StackPanel Orientation="Horizontal" Loaded="TreeHeader_Loaded"
+                        MouseLeftButtonDown="BoardHeader_MouseLeftButtonDown">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="Background" Value="#264F78"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
                 <StackPanel.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="⚙️  Edit Board..." Command="{Binding EditCommand}"/>
@@ -26,6 +37,11 @@
                         <MenuItem Header="✏️  Rename Board" Command="{Binding RenameCommand}"/>
                         <MenuItem Header="📄  Duplicate Board..." Command="{Binding DuplicateCommand}"/>
                         <MenuItem Header="❌  Delete Board" Command="{Binding DeleteCommand}"/>
+                        <Separator Visibility="{Binding Selection.HasMultipleBoards, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.DeleteBoardsLabel}" Command="{Binding Selection.DeleteCommand}"
+                                  Visibility="{Binding Selection.HasMultipleBoards, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.ClearLabel}" Command="{Binding Selection.ClearCommand}"
+                                  Visibility="{Binding Selection.HasBoards, Converter={StaticResource BooleanToVisibility}}"/>
                     </ContextMenu>
                 </StackPanel.ContextMenu>
                 <TextBlock Text="📋 " FontSize="13"/>
@@ -183,6 +199,8 @@
                         <MenuItem Header="{Binding RightCommands.RemoveLabel}" Command="{Binding RightCommands.RemoveCommand}"
                                   Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
                         <Separator Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.EditCircuitsLabel}" Command="{Binding Selection.EditCommand}"
+                                  Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding Selection.MoveCircuitsLabel}" Command="{Binding Selection.MoveCommand}"
                                   Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding Selection.DeleteCircuitsLabel}" Command="{Binding Selection.DeleteCommand}"
@@ -213,10 +231,10 @@
                 <TextBlock Grid.Column="2" DataContext="{Binding LeftDisplay}" Text="{Binding Protection}"
                            Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="3" DataContext="{Binding LeftDisplay}" Text="{Binding Breaker}"
-                           Style="{StaticResource CircuitValueStyle}"/>
+                           ToolTip="{Binding TripToolTip}" Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="4" Text="│" Foreground="#646464" Style="{StaticResource CircuitCellStyle}"/>
                 <TextBlock Grid.Column="5" DataContext="{Binding RightDisplay}" Text="{Binding Breaker}"
-                           Style="{StaticResource CircuitValueStyle}"/>
+                           ToolTip="{Binding TripToolTip}" Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="6" DataContext="{Binding RightDisplay}" Text="{Binding Protection}"
                            Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="7" DataContext="{Binding RightDisplay}" Text="{Binding Description}"

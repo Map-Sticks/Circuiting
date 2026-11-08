@@ -30,9 +30,71 @@ namespace Circuiting.Services
         public bool IsNoOp { get; internal set; }
     }
 
-    /// <summary>Bulk move and delete operations for circuits and circuited elements selected in the tree.</summary>
+    /// <summary>Property values to apply to several circuits; a null value leaves that property unchanged.</summary>
+    public sealed class BulkCircuitEdit
+    {
+        public string? Description { get; set; }
+        public string? BreakerSize { get; set; }
+        public string? ProtectionType { get; set; }
+        public string? EarthLeakage { get; set; }
+        public string? TripCurve { get; set; }
+        public string? TripSetting { get; set; }
+
+        public bool HasChanges => Fields(new CircuitData()).Any(f => f.Value != null);
+
+        /// <summary>True when applying the edit would change <paramref name="circuit"/>.</summary>
+        public bool WouldChange(CircuitData circuit) =>
+            Fields(circuit).Any(f => f.Value != null && f.Value != f.Current);
+
+        /// <summary>Applies the set values; returns true when the circuit changed.</summary>
+        public bool Apply(CircuitData circuit)
+        {
+            bool changed = WouldChange(circuit);
+            if (Description != null) circuit.Description = Description;
+            if (BreakerSize != null) circuit.BreakerSize = BreakerSize;
+            if (ProtectionType != null) circuit.ProtectionType = ProtectionType;
+            if (EarthLeakage != null) circuit.EarthLeakage = EarthLeakage;
+            if (TripCurve != null) circuit.TripCurve = TripCurve;
+            if (TripSetting != null) circuit.TripSetting = TripSetting;
+            return changed;
+        }
+
+        private IEnumerable<(string? Value, string Current)> Fields(CircuitData circuit)
+        {
+            yield return (Description, circuit.Description);
+            yield return (BreakerSize, circuit.BreakerSize);
+            yield return (ProtectionType, circuit.ProtectionType);
+            yield return (EarthLeakage, circuit.EarthLeakage);
+            yield return (TripCurve, circuit.TripCurve);
+            yield return (TripSetting, circuit.TripSetting);
+        }
+
+        /// <summary>The value shared by every circuit, or null when they differ.</summary>
+        public static string? Common(IEnumerable<CircuitData> circuits, Func<CircuitData, string> value)
+        {
+            List<string> values = circuits.Select(value).Distinct().ToList();
+            return values.Count == 1 ? values[0] : null;
+        }
+    }
+
+    /// <summary>Bulk move, edit and delete operations for circuits, elements and boards selected in the tree.</summary>
     public static class BulkCircuitOperations
     {
+        /// <summary>Applies <paramref name="edit"/> to every circuit; returns the number of circuits changed.</summary>
+        public static int ApplyEdit(IEnumerable<CircuitRef> circuits, BulkCircuitEdit edit) =>
+            circuits.Select(c => c.Circuit).Distinct().Count(edit.Apply);
+
+        /// <summary>Removes the boards with the given GUIDs; returns the removed boards in their original order.</summary>
+        public static List<BoardData> RemoveBoards(List<BoardData> boards, ICollection<Guid> boardGuids)
+        {
+            List<BoardData> removed = boards.Where(b => boardGuids.Contains(b.BoardGuid)).ToList();
+            boards.RemoveAll(removed.Contains);
+            return removed;
+        }
+
+        public static int CountFixtures(BoardData board) =>
+            board.Chassis.Sum(c => c.Circuits.Sum(circuit => circuit.Fixtures.Count));
+
         /// <summary>Circuits with the given GUIDs, in board, chassis and position order.</summary>
         public static List<CircuitRef> ResolveCircuits(IEnumerable<BoardData> boards, ICollection<Guid> circuitGuids)
         {

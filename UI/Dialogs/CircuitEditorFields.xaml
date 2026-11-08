@@ -12,6 +12,12 @@
         <ComboBox x:Name="ProtectionCombo" FontSize="12" Padding="4,3" Margin="0,0,0,8"/>
         <TextBlock Text="Earth Leakage:" Foreground="#C8C8C8" FontSize="12" Margin="0,0,0,3"/>
         <ComboBox x:Name="LeakageCombo" FontSize="12" Padding="4,3" Margin="0,0,0,8"/>
+        <TextBlock Text="Trip Curve:" Foreground="#C8C8C8" FontSize="12" Margin="0,0,0,3"/>
+        <ComboBox x:Name="TripCurveCombo" FontSize="12" Padding="4,3" Margin="0,0,0,8"
+                  ToolTip="MCB/RCBO tripping characteristic"/>
+        <TextBlock Text="Trip Setting:" Foreground="#C8C8C8" FontSize="12" Margin="0,0,0,3"/>
+        <TextBox x:Name="TripSettingBox" FontSize="12" Padding="4,3" Margin="0,0,0,8"
+                 ToolTip="Adjustable breaker settings, e.g. Ir 0.8×In, Isd 6×Ir (optional)"/>
         <TextBlock Text="Poles:" Foreground="#C8C8C8" FontSize="12" Margin="0,0,0,3"/>
         <ComboBox x:Name="PolesCombo" FontSize="12" Padding="4,3" Margin="0,0,0,8"/>
     </StackPanel>

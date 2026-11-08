@@ -7,11 +7,12 @@ namespace Circuiting.ViewModels
     {
         None,
         Circuits,
-        Elements
+        Elements,
+        Boards
     }
 
     /// <summary>
-    /// Multi-selection of circuits or circuited elements in the circuit tree, keyed by circuit or fixture GUID
+    /// Multi-selection of boards, circuits or circuited elements in the circuit tree, keyed by board, circuit or fixture GUID
     /// so it survives tree rebuilds. A selection holds one kind at a time. Ctrl+click toggles, Shift+click
     /// selects the range from the anchor in visible tree order, Ctrl+Shift+click adds that range.
     /// </summary>
@@ -20,10 +21,11 @@ namespace Circuiting.ViewModels
         private readonly HashSet<Guid> _keys = new HashSet<Guid>();
         private Guid? _anchor;
 
-        public TreeSelection(Action move, Action delete)
+        public TreeSelection(Action move, Action delete, Action edit)
         {
             MoveCommand = new RelayCommand(move);
             DeleteCommand = new RelayCommand(delete);
+            EditCommand = new RelayCommand(edit);
             ClearCommand = new RelayCommand(Clear);
         }
 
@@ -35,6 +37,10 @@ namespace Circuiting.ViewModels
 
         public bool HasMultipleCircuits => Kind == TreeSelectionKind.Circuits && Count > 1;
         public bool HasMultipleElements => Kind == TreeSelectionKind.Elements && Count > 1;
+        public bool HasMultipleBoards => Kind == TreeSelectionKind.Boards && Count > 1;
+        public bool HasBoards => Kind == TreeSelectionKind.Boards && Count > 0;
+        public string EditCircuitsLabel => $"📝  Edit {Count} Selected Circuits...";
+        public string DeleteBoardsLabel => $"❌  Delete {Count} Selected Boards...";
         public string MoveCircuitsLabel => $"↔️  Move {Count} Selected Circuits...";
         public string DeleteCircuitsLabel => $"🗑️  Delete {Count} Selected Circuits";
         public string MoveElementsLabel => $"↔️  Move {Count} Selected Elements to Circuit...";
@@ -42,11 +48,17 @@ namespace Circuiting.ViewModels
         public string ClearLabel => "✖  Clear Selection (Esc)";
         public IRelayCommand MoveCommand { get; }
         public IRelayCommand DeleteCommand { get; }
+        public IRelayCommand EditCommand { get; }
         public IRelayCommand ClearCommand { get; }
 
         public string Summary => Count == 0 ? string.Empty
+            : Kind == TreeSelectionKind.Boards
+                ? $"{Count} board{(Count == 1 ? string.Empty : "s")} selected — Clear Selected or the Delete key " +
+                  "deletes them, Esc to clear"
             : $"{Count} {(Kind == TreeSelectionKind.Circuits ? "circuit" : "element")}{(Count == 1 ? string.Empty : "s")} " +
-              "selected — right-click to move or delete, Alt+drag to move, Delete key, Esc to clear";
+              (Kind == TreeSelectionKind.Circuits
+                  ? "selected — right-click to edit, move or delete, Alt+drag to move, Delete key, Esc to clear"
+                  : "selected — right-click to move or unassign, Alt+drag to move, Delete key, Esc to clear");
 
         /// <summary>Applies a click on <paramref name="key"/>; <paramref name="order"/> is the visible order of that kind.</summary>
         public void Click(TreeSelectionKind kind, Guid key, IReadOnlyList<Guid> order, bool ctrl, bool shift)
@@ -102,6 +114,14 @@ namespace Circuiting.ViewModels
         public void ApplyTo(IEnumerable<BoardTreeNode> boards)
         {
             foreach (BoardTreeNode board in boards)
+            {
+                board.IsSelected = Contains(TreeSelectionKind.Boards, board.Board.BoardGuid);
+                ApplyToChassis(board);
+            }
+        }
+
+        private void ApplyToChassis(BoardTreeNode board)
+        {
             foreach (ChassisTreeNode chassis in board.Chassis)
             foreach (CircuitRowViewModel row in chassis.Rows)
             {
@@ -111,6 +131,10 @@ namespace Circuiting.ViewModels
                     fixture.IsSelected = Contains(TreeSelectionKind.Elements, fixture.Fixture.FixtureGuid);
             }
         }
+
+        /// <summary>Board GUIDs in tree order.</summary>
+        public static List<Guid> BoardOrder(IEnumerable<BoardTreeNode> boards) =>
+            boards.Select(b => b.Board.BoardGuid).ToList();
 
         /// <summary>Circuit GUIDs in visible tree order (expanded boards and chassis; left then right per row).</summary>
         public static List<Guid> CircuitOrder(IEnumerable<BoardTreeNode> boards)

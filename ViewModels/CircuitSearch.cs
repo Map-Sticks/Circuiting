@@ -1,4 +1,5 @@
 using Circuiting.Models;
+using Circuiting.Services;
 
 namespace Circuiting.ViewModels
 {
@@ -36,7 +37,8 @@ namespace Circuiting.ViewModels
         public bool MatchesCircuit(CircuitData circuit) =>
             IsActive && Includes(CircuitSearchScope.Circuits) && Matches(circuit.DisplayLabel,
                 circuit.CircuitNumber.ToString(), circuit.Description, circuit.BreakerSize,
-                circuit.ProtectionType, circuit.EarthLeakage);
+                circuit.ProtectionType, circuit.EarthLeakage, circuit.TripCurve, circuit.TripSetting,
+                CircuitLayout.BreakerText(circuit));
 
         private bool Includes(CircuitSearchScope scope) => Scope == CircuitSearchScope.All || Scope == scope;
 

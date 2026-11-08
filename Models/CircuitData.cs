@@ -10,6 +10,10 @@
         public string BreakerSize { get; set; } = string.Empty;
         public string ProtectionType { get; set; } = string.Empty;
         public string EarthLeakage { get; set; } = string.Empty;
+        /// <summary>MCB/RCBO tripping curve (B, C, D, K or Z); empty when not specified.</summary>
+        public string TripCurve { get; set; } = string.Empty;
+        /// <summary>Free-text adjustable trip settings, e.g. "Ir 0.8×In, Isd 6×Ir"; empty when not specified.</summary>
+        public string TripSetting { get; set; } = string.Empty;
         public int Poles { get; set; } = 1;
         public List<CircuitedFixture> Fixtures { get; set; } = new List<CircuitedFixture>();
     }
@@ -33,6 +37,9 @@
 
         public static readonly string[] EarthLeakages =
             { "", "10mA", "30mA", "100mA", "300mA" };
+
+        public static readonly string[] TripCurves =
+            { "", "B", "C", "D", "K", "Z" };
 
         public static readonly int[] PoleOptions = { 1, 2, 3 };
     }

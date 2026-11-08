@@ -17,9 +17,13 @@ namespace Circuiting.UI.DockablePanel
             get
             {
                 if (_selection != null) return _selection;
-                _selection = new TreeSelection(OnMoveSelection, OnDeleteSelection);
-                // Keeps the highlight in sync, including Clear Selection from the context menu.
-                _selection.PropertyChanged += (_, _) => _selection.ApplyTo(_treeNodes);
+                _selection = new TreeSelection(OnMoveSelection, OnDeleteSelection, OnEditSelection);
+                // Keeps the highlight and Clear button in sync, including Clear Selection from the context menu.
+                _selection.PropertyChanged += (_, _) =>
+                {
+                    _selection.ApplyTo(_treeNodes);
+                    UpdateClearButton();
+                };
                 return _selection;
             }
         }
@@ -56,6 +60,24 @@ namespace Circuiting.UI.DockablePanel
             ShowSelection();
         }
 
+        private void BoardHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 1 || sender is not FrameworkElement { DataContext: BoardTreeNode node }) return;
+            (bool ctrl, bool shift) = SelectionModifiers();
+            Selection.Click(TreeSelectionKind.Boards, node.Board.BoardGuid, TreeSelection.BoardOrder(_treeNodes),
+                ctrl, shift);
+            ShowSelection();
+        }
+
+        private void UpdateClearButton()
+        {
+            bool boards = Selection.HasBoards;
+            ClearAllButton.Content = boards ? $"Clear Selected ({Selection.Count})" : "Clear All";
+            ClearAllButton.ToolTip = boards
+                ? "Delete the selected boards (Ctrl/Shift+click boards to change the selection)"
+                : "Delete all boards; select boards first (click, Ctrl/Shift+click) to clear only those";
+        }
+
         private void ShowSelection()
         {
             Selection.ApplyTo(_treeNodes);
@@ -82,6 +104,7 @@ namespace Circuiting.UI.DockablePanel
                         ? new[] { circuit.CircuitGuid }
                         : circuit.Fixtures.Select(f => f.FixtureGuid)
                     select key);
+                existing.UnionWith(_boards.Select(b => b.BoardGuid));
                 Selection.Prune(existing.Contains);
             }
             Selection.ApplyTo(_treeNodes);
@@ -156,6 +179,35 @@ namespace Circuiting.UI.DockablePanel
             return true;
         }
 
+        // ─── Bulk Edit ───────────────────────────────────────
+
+        private void OnEditSelection()
+        {
+            if (Selection.Kind != TreeSelectionKind.Circuits) return;
+            List<CircuitRef> circuits = BulkCircuitOperations.ResolveCircuits(_boards, Selection.Keys.ToList());
+            if (circuits.Count == 0 || !circuits.All(c => IsCurrentTarget(c.Board, c.Chassis, c.Circuit))) return;
+            ProjectData project = _project;
+            var dialog = new BulkChassisEditDialog(circuits.Select(c => c.Circuit).ToList());
+            if (dialog.ShowDialog() != true || !dialog.Confirmed) return;
+            if (!IsCurrentProject(project)) return;
+            BulkCircuitEdit edit = dialog.Edit;
+            if (!edit.HasChanges)
+            {
+                StatusLabel.Text = "No properties were ticked; nothing changed.";
+                return;
+            }
+            if (!circuits.All(c => IsCurrentTarget(c.Board, c.Chassis, c.Circuit))) return;
+            if (!circuits.Any(c => edit.WouldChange(c.Circuit)))
+            {
+                StatusLabel.Text = "The selected circuits already have those values.";
+                return;
+            }
+            PushUndoState();
+            int changed = BulkCircuitOperations.ApplyEdit(circuits, edit);
+            SaveAndRefresh();
+            StatusLabel.Text = $"Updated {changed} of {circuits.Count} selected circuits.";
+        }
+
         // ─── Bulk Delete ─────────────────────────────────────
 
         private void OnDeleteSelection()
@@ -163,6 +215,11 @@ namespace Circuiting.UI.DockablePanel
             if (Selection.Kind == TreeSelectionKind.Elements)
             {
                 DeleteSelectedFixtures();
+                return;
+            }
+            if (Selection.Kind == TreeSelectionKind.Boards)
+            {
+                DeleteSelectedBoards();
                 return;
             }
             if (Selection.Kind != TreeSelectionKind.Circuits) return;
@@ -195,6 +252,34 @@ namespace Circuiting.UI.DockablePanel
             SaveAndRefresh();
             StatusLabel.Text = $"Deleted {circuits.Count} circuits" +
                 (elements > 0 ? $"; {elements} element(s) unassigned." : ".");
+        }
+
+        /// <summary>Deletes the selected boards after confirmation. Returns true when boards were deleted.</summary>
+        private bool DeleteSelectedBoards()
+        {
+            var keys = new HashSet<Guid>(Selection.Keys);
+            List<BoardData> boards = _boards.Where(b => keys.Contains(b.BoardGuid)).ToList();
+            if (boards.Count == 0) return false;
+            ProjectData project = _project;
+            int fixtures = boards.Sum(BulkCircuitOperations.CountFixtures);
+            const int listed = 10;
+            string list = string.Join("\n", boards.Take(listed).Select(b =>
+                $"  • {b.DisplayName} ({BulkCircuitOperations.CountFixtures(b)} element(s))"));
+            if (boards.Count > listed) list += $"\n  … and {boards.Count - listed} more";
+            if (MessageBox.Show(
+                    $"Clear (delete) {boards.Count} selected board(s)?\n\n{list}\n\n" +
+                    $"{fixtures} element assignment(s) will be removed (the elements stay in the model). " +
+                    "Other boards are not affected.",
+                    "Clear Selected Boards", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return false;
+            if (!IsCurrentProject(project)) return false;
+
+            PushUndoState();
+            List<BoardData> removed = BulkCircuitOperations.RemoveBoards(_boards, keys);
+            Selection.Clear();
+            SaveAndRefresh();
+            StatusLabel.Text = $"Deleted {removed.Count} board(s); {fixtures} element assignment(s) removed.";
+            return true;
         }
 
         private void DeleteSelectedFixtures()

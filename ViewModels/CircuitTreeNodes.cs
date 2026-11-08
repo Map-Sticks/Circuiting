@@ -61,9 +61,18 @@ namespace Circuiting.ViewModels
             EditCommand = new RelayCommand(() => actions.EditBoard(board));
             DuplicateCommand = new RelayCommand(() => actions.DuplicateBoard(board));
             DeleteCommand = new RelayCommand(() => actions.DeleteBoard(board));
+            Selection = actions.Selection;
         }
 
         public BoardData Board { get; }
+        public TreeSelection Selection { get; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set => SetProperty(ref _isSelected, value);
+        }
         public string Name => Board.DisplayName;
         public string PhaseText => Board.Supply == SupplyType.ThreePhase ? "3 Phase" : "1 Phase";
         public List<ChassisTreeNode> Chassis { get; }

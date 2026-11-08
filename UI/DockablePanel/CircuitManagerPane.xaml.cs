@@ -596,11 +596,23 @@ namespace Circuiting.UI.DockablePanel
 
         private void ClearAllButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_boards.Count == 0)
+            {
+                StatusLabel.Text = "There are no boards to clear.";
+                return;
+            }
+            if (Selection.HasBoards)
+            {
+                DeleteSelectedBoards();
+                return;
+            }
             ProjectData project = _project;
-            int fixtures = _boards.Sum(b => b.Chassis.Sum(c => c.Circuits.Sum(circuit => circuit.Fixtures.Count)));
+            int fixtures = _boards.Sum(BulkCircuitOperations.CountFixtures);
             if (MessageBox.Show(
-                $"Delete all {_boards.Count} board(s) and remove {fixtures} fixture assignment(s)?",
-                "Clear All Circuit Data", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                "No boards are selected.\n\n" +
+                $"Do you want to clear ALL {_boards.Count} board(s) and remove {fixtures} fixture assignment(s)?\n\n" +
+                "Press Cancel, then select the boards to clear (click a board, Ctrl+click or Shift+click for more).",
+                "Clear All Circuit Data", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
                 return;
             if (!IsCurrentProject(project)) return;
             if (MessageBox.Show("Confirm that all circuit data should be cleared from this project.",

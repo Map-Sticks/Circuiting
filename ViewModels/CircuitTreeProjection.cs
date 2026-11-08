@@ -56,6 +56,8 @@ namespace Circuiting.ViewModels
         public string Description { get; private set; } = string.Empty;
         public string Protection { get; private set; } = string.Empty;
         public string Breaker { get; private set; } = string.Empty;
+        /// <summary>Trip curve and setting for the breaker cell's tooltip; null when neither is set.</summary>
+        public string? TripToolTip { get; private set; }
         /// <summary>True for unoccupied positions (spare or space); they are shown greyed out.</summary>
         public bool IsSpare { get; private set; }
 
@@ -99,7 +101,11 @@ namespace Circuiting.ViewModels
                     ? "Spare" : $"Spare — {circuit.Description}";
             }
 
-            side.Breaker = circuit.BreakerSize ?? string.Empty;
+            side.Breaker = CircuitLayout.BreakerText(circuit);
+            var trip = new List<string>();
+            if (!string.IsNullOrEmpty(circuit.TripCurve)) trip.Add($"Trip curve: {circuit.TripCurve}");
+            if (!string.IsNullOrWhiteSpace(circuit.TripSetting)) trip.Add($"Trip setting: {circuit.TripSetting.Trim()}");
+            side.TripToolTip = trip.Count == 0 ? null : string.Join("\n", trip);
             if (!string.IsNullOrEmpty(circuit.ProtectionType))
                 side.Protection = circuit.ProtectionType == "MCB" || string.IsNullOrEmpty(circuit.EarthLeakage)
                     ? circuit.ProtectionType : $"{circuit.EarthLeakage} {circuit.ProtectionType}";

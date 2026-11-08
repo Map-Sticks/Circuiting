@@ -122,6 +122,9 @@ namespace Circuiting.Storage
                             RequireTypes(circuit, JTokenType.Integer, "circuit",
                                 nameof(CircuitData.CircuitNumber), nameof(CircuitData.PoleIndex),
                                 nameof(CircuitData.Poles));
+                            // Added after schema version 1 was released; older projects omit them.
+                            OptionalTypes(circuit, JTokenType.String, "circuit",
+                                nameof(CircuitData.TripCurve), nameof(CircuitData.TripSetting));
                         }
 
                         foreach (JToken fixtureToken in RequireArray(circuit, nameof(CircuitData.Fixtures), "circuit"))
@@ -149,6 +152,13 @@ namespace Circuiting.Storage
         {
             if (obj[property]?.Type != type)
                 throw new InvalidDataException($"The stored {context} has missing or invalid {property}.");
+        }
+
+        private static void OptionalTypes(JObject obj, JTokenType type, string context, params string[] properties)
+        {
+            foreach (string property in properties)
+                if (obj[property] != null)
+                    RequireType(obj, property, type, context);
         }
 
         private static void RequireTypes(JObject obj, JTokenType type, string context, params string[] properties)
@@ -201,7 +211,7 @@ namespace Circuiting.Storage
                             !circuitIds.Add(circuit.CircuitGuid) || circuit.Fixtures == null ||
                             circuit.DisplayLabel == null || circuit.Description == null ||
                             circuit.BreakerSize == null || circuit.ProtectionType == null ||
-                            circuit.EarthLeakage == null)
+                            circuit.EarthLeakage == null || circuit.TripCurve == null || circuit.TripSetting == null)
                             throw new InvalidDataException($"Chassis '{chassis.Name}' has invalid circuit data.");
 
                         foreach (CircuitedFixture fixture in circuit.Fixtures)
