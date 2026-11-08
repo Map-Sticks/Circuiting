@@ -1,22 +1,104 @@
 <Window x:Class="Circuiting.UI.Dialogs.MoveCircuitDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Move Circuit" Width="560" Height="210"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Title="Move Circuit" Width="1000" Height="600" MinWidth="760" MinHeight="400"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
         Background="#1E1E1E">
-    <Grid Margin="20">
+    <Window.Resources>
+        <Style x:Key="ColumnHeading" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style x:Key="PickerList" TargetType="ListBox">
+            <Setter Property="Background" Value="#141414"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+        <Style x:Key="PositionItem" TargetType="ListViewItem">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="ToolTip" Value="{Binding ToolTip}"/>
+            <Setter Property="IsEnabled" Value="{Binding IsAvailable}"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="#707070"/>
+                </Trigger>
+                <DataTrigger Binding="{Binding ReplacesSpare}" Value="True">
+                    <Setter Property="Foreground" Value="#E0C080"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="16">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <TextBlock Text="Choose a free destination (board / chassis / position):"
-                   Foreground="White" Margin="0,0,0,8"/>
-        <ComboBox x:Name="DestinationCombo" Grid.Row="1" DisplayMemberPath="DisplayName"/>
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Cancel" Width="80" Margin="0,0,8,0" IsCancel="True"/>
-            <Button Content="Move" Width="80" IsDefault="True" Click="Move_Click"/>
-        </StackPanel>
+        <TextBlock x:Name="CircuitText" Foreground="White" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="5*"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="1. Board" Style="{StaticResource ColumnHeading}"/>
+                <TextBox x:Name="BoardFilterBox" DockPanel.Dock="Top" Padding="4,3" Margin="0,0,0,6"
+                         ToolTip="Filter boards by board or chassis name" TextChanged="BoardFilter_TextChanged"/>
+                <ListBox x:Name="BoardList" Style="{StaticResource PickerList}" DisplayMemberPath="Header"
+                         SelectionChanged="BoardList_SelectionChanged"/>
+            </DockPanel>
+
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Text="2. Chassis" Style="{StaticResource ColumnHeading}"/>
+                <ListBox x:Name="ChassisList" Style="{StaticResource PickerList}" DisplayMemberPath="Header"
+                         SelectionChanged="ChassisList_SelectionChanged"/>
+            </DockPanel>
+
+            <DockPanel Grid.Column="4">
+                <TextBlock DockPanel.Dock="Top" Text="3. Target position" Style="{StaticResource ColumnHeading}"/>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="PositionFilterBox" Padding="4,3"
+                             ToolTip="Filter positions by label, number, side or contents"
+                             TextChanged="PositionFilter_Changed"/>
+                    <CheckBox x:Name="AvailableOnlyCheck" Grid.Column="1" Content="Available only" IsChecked="True"
+                              Foreground="White" VerticalAlignment="Center" Margin="10,0,0,0"
+                              Checked="PositionFilter_Changed" Unchecked="PositionFilter_Changed"/>
+                </Grid>
+                <ListView x:Name="PositionList" Background="#141414" Foreground="White" BorderBrush="#555555"
+                          FontFamily="Consolas" SelectionMode="Single"
+                          ItemContainerStyle="{StaticResource PositionItem}"
+                          SelectionChanged="PositionList_SelectionChanged"
+                          MouseDoubleClick="PositionList_MouseDoubleClick">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Position" Width="80" DisplayMemberBinding="{Binding Label}"/>
+                            <GridViewColumn Header="Side" Width="50" DisplayMemberBinding="{Binding Side}"/>
+                            <GridViewColumn Header="Row" Width="40" DisplayMemberBinding="{Binding Row}"/>
+                            <GridViewColumn Header="Current contents" Width="200" DisplayMemberBinding="{Binding Contents}"/>
+                            <GridViewColumn Header="Status" Width="110" DisplayMemberBinding="{Binding Status}"/>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </DockPanel>
+        </Grid>
+        <DockPanel Grid.Row="2" Margin="0,12,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Cancel" Width="80" Padding="0,4" Margin="0,0,8,0" IsCancel="True"/>
+                <Button x:Name="MoveButton" Content="Move" Width="80" Padding="0,4" Background="#0078D4"
+                        Foreground="White" BorderThickness="0" IsDefault="True" IsEnabled="False" Click="Move_Click"/>
+            </StackPanel>
+            <TextBlock x:Name="SelectionText" Foreground="#AAAAAA" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </DockPanel>
     </Grid>
 </Window>

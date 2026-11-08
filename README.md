@@ -85,7 +85,14 @@ the chassis dialog offers an explicit option to remove it.
   the other spares are deleted after confirmation. It is refused if more than
   one position has fixtures or the group would run past the chassis. Creating a
   multi-pole circuit in the row editor also replaces spares on its poles.
-- **Move Left/Right** in a circuit row's context menu opens a destination picker.
+- **Move Left/Right** in a circuit row's context menu opens a destination picker:
+  choose a **board** (filter by board or chassis name), then a **chassis**, then
+  the **target position**. Boards and chassis show how many positions fit the
+  circuit, and the current board and chassis are preselected. The position list
+  shows each position's current contents and status (Available, Replaces spare,
+  Unavailable with the reason as a tooltip), can be filtered by label, number,
+  side or contents, and hides unavailable positions unless **Available only** is
+  cleared. Double-click a position or click **Move**.
   Alternatively, hold **Alt** and drag a circuit with the left mouse button onto
   the desired left or right position. Collapsed boards and chassis expand when
   dragged over. Moves work across chassis and boards and preserve circuit identity,
@@ -241,3 +248,6 @@ Run on a disposable copy of a model in each supported Revit version:
     from each of R, W and B (spaces, spares, and one position with fixtures),
     confirm two fixture positions are refused, and move a circuit onto a spare
     (picker and Alt-drag) confirming the replacement prompt and Undo.
+13. Move circuits with the picker across many boards: filter boards, switch
+    chassis, filter positions, toggle **Available only**, and confirm
+    unavailable positions cannot be chosen and the move lands where selected.

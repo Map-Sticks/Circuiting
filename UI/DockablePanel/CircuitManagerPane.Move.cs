@@ -25,35 +25,18 @@ namespace Circuiting.UI.DockablePanel
         {
             if (!IsCurrentTarget(board, chassis, circuit)) return;
             ProjectData project = _project;
-            var destinations = new List<CircuitMoveDestination>();
-            foreach (BoardData targetBoard in _boards)
-            foreach (ChassisData targetChassis in targetBoard.Chassis)
-            foreach (PoleAssignment pole in CircuitLabelCalculator.Calculate(targetBoard, targetChassis))
-            {
-                if (ReferenceEquals(chassis, targetChassis) && pole.PoleIndex == circuit.PoleIndex) continue;
-                if (CircuitLayout.GetMoveError(chassis, circuit, targetBoard, targetChassis, pole.PoleIndex) != null)
-                    continue;
-                bool replacesSpare = CircuitLayout.GetSparesReplacedByMove(circuit, targetChassis, pole.PoleIndex)
-                    .Any(CircuitLayout.HasDetails);
-                destinations.Add(new CircuitMoveDestination
-                {
-                    Board = targetBoard, Chassis = targetChassis, PoleIndex = pole.PoleIndex,
-                    DisplayName = $"{targetBoard.DisplayName} / {targetChassis.Name} / " +
-                        $"{pole.DisplayLabel} ({pole.Side}, row {pole.RowIndex + 1})" +
-                        (replacesSpare ? " — replaces spare" : string.Empty)
-                });
-            }
-            if (destinations.Count == 0)
+            var picker = new CircuitMovePicker(_boards, board, chassis, circuit);
+            if (picker.TotalAvailable == 0)
             {
                 MessageBox.Show("There are no spare or space positions that fit this circuit.",
                     "Move Circuit", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var dialog = new MoveCircuitDialog(destinations);
+            var dialog = new MoveCircuitDialog(picker);
             if (dialog.ShowDialog() != true || dialog.Destination == null) return;
             if (!IsCurrentProject(project)) return;
-            CircuitMoveDestination destination = dialog.Destination;
-            MoveCircuit(board, chassis, circuit, destination.Board, destination.Chassis, destination.PoleIndex);
+            MovePositionOption destination = dialog.Destination;
+            MoveCircuit(board, chassis, circuit, destination.Board, destination.Chassis, destination.Position.PoleIndex);
         }
 
         private bool MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit,

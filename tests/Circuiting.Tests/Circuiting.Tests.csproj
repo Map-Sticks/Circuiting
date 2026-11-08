@@ -31,5 +31,6 @@
     <Compile Include="../../ViewModels/CircuitTreeProjection.cs" Link="ViewModels/CircuitTreeProjection.cs" />
     <Compile Include="../../ViewModels/CircuitTreeNodes.cs" Link="ViewModels/CircuitTreeNodes.cs" />
     <Compile Include="../../ViewModels/CircuitSearch.cs" Link="ViewModels/CircuitSearch.cs" />
+    <Compile Include="../../ViewModels/CircuitMovePicker.cs" Link="ViewModels/CircuitMovePicker.cs" />
   </ItemGroup>
 </Project>

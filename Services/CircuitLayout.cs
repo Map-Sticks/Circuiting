@@ -69,32 +69,61 @@ namespace Circuiting.Services
         public static string? GetMoveError(ChassisData source, CircuitData circuit,
             BoardData destinationBoard, ChassisData destination, int poleIndex)
         {
+            string? error = GetMoveErrors(source, circuit, destinationBoard, destination,
+                out Dictionary<int, string?> errors);
+            if (error != null) return error;
+            return errors.TryGetValue(poleIndex, out string? positionError)
+                ? positionError : "The destination position is outside the chassis.";
+        }
+
+        /// <summary>
+        /// Validates moving <paramref name="circuit"/> to every position of <paramref name="destination"/> at once.
+        /// Returns an error that applies to the whole chassis, or null with a per-position error (null = valid).
+        /// </summary>
+        public static string? GetMoveErrors(ChassisData source, CircuitData circuit,
+            BoardData destinationBoard, ChassisData destination, out Dictionary<int, string?> errors)
+        {
+            errors = new Dictionary<int, string?>();
             if (!source.Circuits.Contains(circuit))
                 return "The source circuit no longer belongs to its chassis.";
             if (!destinationBoard.Chassis.Contains(destination))
                 return "The destination chassis no longer belongs to its board.";
-            List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(destinationBoard, destination);
-            PoleAssignment? position = assignments.FirstOrDefault(a => a.PoleIndex == poleIndex);
-            if (position == null) return "The destination position is outside the chassis.";
             if (circuit.Poles < 1 || circuit.Poles > 3) return "The circuit has an invalid pole count.";
-            if (ReferenceEquals(source, destination) && circuit.PoleIndex == poleIndex) return null;
-            if (circuit.Poles > 1 && (destination.PhaseLabels.Count < 3 ||
-                !IsValidMultiPoleStart(position, destination, circuit.Poles, assignments)))
-                return "A multi-pole circuit must start on the first phase of a three-phase chassis and fit on the same side.";
+            List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(destinationBoard, destination);
+            bool sameChassis = ReferenceEquals(source, destination);
 
             HashSet<int> occupied = new HashSet<int>();
+            string? positionlessError = null;
             foreach (CircuitData other in destination.Circuits)
             {
-                if (ReferenceEquals(source, destination) && ReferenceEquals(other, circuit)) continue;
-                if (!other.PoleIndex.HasValue) return "A destination circuit has no pole position.";
+                if (sameChassis && ReferenceEquals(other, circuit)) continue;
+                if (!other.PoleIndex.HasValue)
+                {
+                    positionlessError = "A destination circuit has no pole position.";
+                    break;
+                }
                 if (!IsOccupied(other)) continue;
                 for (int i = 0; i < other.Poles; i++)
                     occupied.Add(checked(other.PoleIndex.Value + i * 2));
             }
+
+            var positions = new HashSet<int>(assignments.Select(a => a.PoleIndex));
+            foreach (PoleAssignment position in assignments)
+                errors[position.PoleIndex] = sameChassis && circuit.PoleIndex == position.PoleIndex ? null
+                    : positionlessError ?? PositionMoveError(circuit, destination, position, assignments, positions, occupied);
+            return null;
+        }
+
+        private static string? PositionMoveError(CircuitData circuit, ChassisData destination, PoleAssignment position,
+            List<PoleAssignment> assignments, HashSet<int> positions, HashSet<int> occupied)
+        {
+            if (circuit.Poles > 1 && (destination.PhaseLabels.Count < 3 ||
+                !IsValidMultiPoleStart(position, destination, circuit.Poles, assignments)))
+                return "A multi-pole circuit must start on the first phase of a three-phase chassis and fit on the same side.";
             for (int i = 0; i < circuit.Poles; i++)
             {
-                int index = checked(poleIndex + i * 2);
-                if (!assignments.Any(a => a.PoleIndex == index))
+                int index = checked(position.PoleIndex + i * 2);
+                if (!positions.Contains(index))
                     return "The circuit exceeds the destination chassis.";
                 if (occupied.Contains(index))
                     return "The destination is occupied by a circuit with fixtures assigned. " +
