@@ -1,7 +1,113 @@
 ﻿<UserControl x:Class="Circuiting.UI.DockablePanel.CircuitManagerPane"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:viewModels="clr-namespace:Circuiting.ViewModels"
              Background="#1E1E1E">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibility"/>
+        <Style x:Key="CircuitTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+        </Style>
+        <HierarchicalDataTemplate DataType="{x:Type viewModels:BoardTreeNode}"
+                                  ItemsSource="{Binding Chassis}"
+                                  ItemContainerStyle="{StaticResource CircuitTreeItemStyle}">
+            <StackPanel Orientation="Horizontal" Loaded="TreeHeader_Loaded">
+                <StackPanel.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="➕  Add Chassis" Command="{Binding AddChassisCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="✏️  Rename Board" Command="{Binding RenameCommand}"/>
+                        <MenuItem Header="❌  Delete Board" Command="{Binding DeleteCommand}"/>
+                    </ContextMenu>
+                </StackPanel.ContextMenu>
+                <TextBlock Text="📋 " FontSize="13"/>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Foreground="White"/>
+                <TextBlock Text="  (" FontSize="11" Foreground="#969696" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding PhaseText}" FontSize="11" Foreground="#969696" VerticalAlignment="Center"/>
+                <TextBlock Text=")" FontSize="11" Foreground="#969696" VerticalAlignment="Center"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type viewModels:ChassisTreeNode}"
+                                  ItemsSource="{Binding Rows}"
+                                  ItemContainerStyle="{StaticResource CircuitTreeItemStyle}">
+            <TextBlock Text="{Binding Header}" Foreground="#C8C8C8" Loaded="TreeHeader_Loaded">
+                <TextBlock.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="⚙️  Edit Chassis" Command="{Binding EditCommand}"/>
+                        <MenuItem Header="📝  Bulk Edit Circuits" Command="{Binding BulkEditCommand}"/>
+                        <MenuItem Header="🧹  Clear All Circuits" Command="{Binding ClearCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="❌  Delete Chassis" Command="{Binding DeleteCommand}"/>
+                    </ContextMenu>
+                </TextBlock.ContextMenu>
+            </TextBlock>
+        </HierarchicalDataTemplate>
+        <Style x:Key="CircuitCellStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,1"/>
+        </Style>
+        <Style x:Key="CircuitDescriptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CircuitCellStyle}">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextTrimming" Value="None"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSpare}" Value="True">
+                    <Setter Property="Foreground" Value="#646464"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate DataType="{x:Type viewModels:CircuitRowViewModel}">
+            <Grid Background="Transparent" Loaded="TreeHeader_Loaded" MouseLeftButtonDown="CircuitRow_MouseLeftButtonDown">
+                <Grid.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="{Binding LeftCommands.DeleteLabel}" Command="{Binding LeftCommands.DeleteCommand}"
+                                  Visibility="{Binding LeftCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding LeftCommands.AssignLabel}" Command="{Binding LeftCommands.AssignCommand}"/>
+                        <MenuItem Header="{Binding LeftCommands.SelectLabel}" Command="{Binding LeftCommands.SelectCommand}"
+                                  Visibility="{Binding LeftCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding LeftCommands.RemoveLabel}" Command="{Binding LeftCommands.RemoveCommand}"
+                                  Visibility="{Binding LeftCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
+                        <Separator/>
+                        <MenuItem Header="{Binding RightCommands.DeleteLabel}" Command="{Binding RightCommands.DeleteCommand}"
+                                  Visibility="{Binding RightCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding RightCommands.AssignLabel}" Command="{Binding RightCommands.AssignCommand}"/>
+                        <MenuItem Header="{Binding RightCommands.SelectLabel}" Command="{Binding RightCommands.SelectCommand}"
+                                  Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding RightCommands.RemoveLabel}" Command="{Binding RightCommands.RemoveCommand}"
+                                  Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
+                    </ContextMenu>
+                </Grid.ContextMenu>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="45"/>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="75"/>
+                    <ColumnDefinition Width="35"/>
+                    <ColumnDefinition Width="15"/>
+                    <ColumnDefinition Width="35"/>
+                    <ColumnDefinition Width="75"/>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="45"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding LeftDisplay.Label}"
+                           Foreground="#C8C8C8" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="1" DataContext="{Binding LeftDisplay}" Text="{Binding Description}"
+                           Style="{StaticResource CircuitDescriptionStyle}"/>
+                <TextBlock Grid.Column="2" Text="{Binding LeftDisplay.Protection}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="3" Text="{Binding LeftDisplay.Breaker}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="4" Text="│" Foreground="#646464" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="5" Text="{Binding RightDisplay.Breaker}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="6" Text="{Binding RightDisplay.Protection}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="7" DataContext="{Binding RightDisplay}" Text="{Binding Description}"
+                           Style="{StaticResource CircuitDescriptionStyle}"/>
+                <TextBlock Grid.Column="8" Text="{Binding RightDisplay.Label}"
+                           Foreground="#C8C8C8" Style="{StaticResource CircuitCellStyle}"/>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -87,6 +193,36 @@
                 Margin="0,0,4,2"
                 Cursor="Hand"/>
 
+                <Button x:Name="ClearAllButton"
+                Content="Clear All"
+                Click="ClearAllButton_Click"
+                Background="#3C3C3C"
+                Foreground="White"
+                BorderThickness="0"
+                Padding="10,4"
+                Margin="0,0,4,2"
+                Cursor="Hand"/>
+
+                <Button x:Name="ValidateButton"
+                Content="Validate Model"
+                Click="ValidateButton_Click"
+                Background="#3C3C3C"
+                Foreground="White"
+                BorderThickness="0"
+                Padding="10,4"
+                Margin="0,0,4,2"
+                Cursor="Hand"/>
+
+                <Button x:Name="ResolutionSettingsButton"
+                Content="Resolution Rules"
+                Click="ResolutionSettingsButton_Click"
+                Background="#3C3C3C"
+                Foreground="White"
+                BorderThickness="0"
+                Padding="10,4"
+                Margin="0,0,4,2"
+                Cursor="Hand"/>
+
                 <Button x:Name="ExpandAllButton"
                 Content="▼ Expand"
                 Click="ExpandAllButton_Click"
@@ -112,6 +248,7 @@
         <!-- Tree View -->
         <TreeView x:Name="BoardTree"
                   Grid.Row="2"
+                  ItemContainerStyle="{StaticResource CircuitTreeItemStyle}"
                   Background="#1E1E1E"
                   Foreground="White"
                   BorderThickness="0"

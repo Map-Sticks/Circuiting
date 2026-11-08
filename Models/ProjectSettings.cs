@@ -5,7 +5,7 @@
         public ResolutionMode ResolutionMode { get; set; } = ResolutionMode.Automatic;
         public AutomaticResolutionRules AutoRules { get; set; } = new AutomaticResolutionRules();
         public string ModeChangedBy { get; set; } = string.Empty;
-        public DateTime ModeLastChanged { get; set; } = DateTime.Now;
+        public DateTime ModeLastChanged { get; set; } = DateTime.MinValue;
     }
 
     public enum ResolutionMode

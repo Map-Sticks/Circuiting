@@ -1,5 +1,6 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI.Selection;
+using Circuiting.Services;
 
 namespace Circuiting.Commands
 {
@@ -15,7 +16,7 @@ namespace Circuiting.Commands
         public bool AllowElement(Element elem)
         {
             if (elem == null) return false;
-            return _allowedIds.Contains(elem.Id.Value);
+            return _allowedIds.Contains(RevitElementIds.GetValue(elem.Id));
         }
 
         public bool AllowReference(Reference reference,

@@ -2,6 +2,7 @@
 using Autodesk.Revit.DB.ExtensibleStorage;
 using Circuiting.Models;
 using Newtonsoft.Json;
+using System.IO;
 
 namespace Circuiting.Storage
 {
@@ -11,56 +12,41 @@ namespace Circuiting.Storage
 
         public static List<BoardData> LoadAllBoards(Document doc)
         {
+            return LoadProjectData(doc).Boards;
+        }
+
+        public static ProjectData LoadProjectData(Document doc)
+        {
+            ProjectInfo projectInfo = doc.ProjectInformation;
+            Schema schema = ESSchema.GetOrCreateProjectSchema();
+            Entity entity = projectInfo.GetEntity(schema);
+            if (!entity.IsValid()) return new ProjectData();
+
             try
             {
-                ProjectInfo projectInfo = doc.ProjectInformation;
-                Schema schema = ESSchema.GetOrCreateProjectSchema();
-                Entity entity = projectInfo.GetEntity(schema);
-
-                if (!entity.IsValid())
-                    return new List<BoardData>();
-
-                string json = entity.Get<string>("ProjectDataJson");
-
-                if (string.IsNullOrEmpty(json))
-                    return new List<BoardData>();
-
-                var settings = new JsonSerializerSettings
-                {
-                    ObjectCreationHandling = ObjectCreationHandling.Replace
-                };
-                List<BoardData> boards = JsonConvert
-                    .DeserializeObject<List<BoardData>>(json, settings)
-                    ?? new List<BoardData>();
-
-                // Clean up any duplicated phase labels from previous bug
-                foreach (BoardData board in boards)
-                {
-                    foreach (ChassisData chassis in board.Chassis)
-                    {
-                        if (chassis.PhaseLabels != null
-                            && chassis.PhaseLabels.Count > 3)
-                        {
-                            chassis.PhaseLabels =
-                                chassis.PhaseLabels.Distinct().ToList();
-                        }
-                    }
-                }
-
-                return boards;
+                return ProjectDataSerializer.Deserialize(entity.Get<string>("ProjectDataJson"));
             }
-            catch
+            catch (Exception ex) when (ex is JsonException || ex is InvalidDataException ||
+                                       ex is ArgumentException || ex is OverflowException)
             {
-                return new List<BoardData>();
+                throw new InvalidDataException(
+                    "Circuit data could not be loaded. The existing model data has not been overwritten. " +
+                    ex.Message, ex);
             }
         }
 
         public static void SaveAllBoards(Document doc, List<BoardData> boards)
         {
+            ProjectData project = LoadProjectData(doc);
+            project.Boards = boards;
+            SaveProjectData(doc, project);
+        }
+
+        public static void SaveProjectData(Document doc, ProjectData project)
+        {
             ProjectInfo projectInfo = doc.ProjectInformation;
             Schema schema = ESSchema.GetOrCreateProjectSchema();
-
-            string json = JsonConvert.SerializeObject(boards);
+            string json = ProjectDataSerializer.Serialize(project);
 
             Entity entity = new Entity(schema);
             entity.Set("ProjectDataJson", json);
@@ -71,29 +57,23 @@ namespace Circuiting.Storage
 
         public static BoardData? LoadBoard(Element panelElement)
         {
-            try
-            {
-                Schema schema = ESSchema.GetOrCreateBoardSchema();
-                Entity entity = panelElement.GetEntity(schema);
+            Schema schema = ESSchema.GetOrCreateBoardSchema();
+            Entity entity = panelElement.GetEntity(schema);
 
-                if (!entity.IsValid())
-                    return null;
-
-                string json = entity.Get<string>("BoardDataJson");
-
-                if (string.IsNullOrEmpty(json))
-                    return null;
-
-                var settings = new JsonSerializerSettings
-                {
-                    ObjectCreationHandling = ObjectCreationHandling.Replace
-                };
-                return JsonConvert.DeserializeObject<BoardData>(json, settings);
-            }
-            catch
-            {
+            if (!entity.IsValid())
                 return null;
-            }
+
+            string json = entity.Get<string>("BoardDataJson");
+
+            if (string.IsNullOrEmpty(json))
+                throw new InvalidDataException("The board data is empty.");
+
+            var settings = new JsonSerializerSettings
+            {
+                ObjectCreationHandling = ObjectCreationHandling.Replace
+            };
+            return JsonConvert.DeserializeObject<BoardData>(json, settings)
+                ?? throw new InvalidDataException("The board data is null.");
         }
 
         public static void SaveBoard(Element panelElement, BoardData board)
@@ -149,20 +129,30 @@ namespace Circuiting.Storage
 
         public static string? GetFixtureCircuitReference(Element fixture)
         {
-            try
-            {
-                Schema schema = ESSchema.GetOrCreateFixtureSchema();
-                Entity entity = fixture.GetEntity(schema);
+            return GetFixtureAssignment(fixture)?.CircuitReference;
+        }
 
-                if (!entity.IsValid())
-                    return string.Empty;
+        public static FixtureAssignment? GetFixtureAssignment(Element fixture)
+        {
+            Entity entity = fixture.GetEntity(ESSchema.GetOrCreateFixtureSchema());
+            if (!entity.IsValid()) return null;
 
-                return entity.Get<string>("CircuitReference");
-            }
-            catch
+            return new FixtureAssignment
             {
-                return string.Empty;
-            }
+                FixtureGuid = ReadGuid(entity, "FixtureGuid"),
+                BoardGuid = ReadGuid(entity, "BoardGuid"),
+                ChassisGuid = ReadGuid(entity, "ChassisGuid"),
+                CircuitGuid = ReadGuid(entity, "CircuitGuid"),
+                CircuitReference = entity.Get<string>("CircuitReference")
+            };
+        }
+
+        private static Guid ReadGuid(Entity entity, string field)
+        {
+            if (!Guid.TryParse(entity.Get<string>(field), out Guid value) || value == Guid.Empty)
+                throw new InvalidDataException($"Fixture assignment has an invalid {field}.");
+            return value;
         }
     }
+
 }

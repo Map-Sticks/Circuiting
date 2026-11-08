@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <_CircuitingProjectDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_CircuitingProjectDirectory>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_CircuitingProjectDirectory)' == '$(MSBuildThisFileDirectory)'">
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)' == ''">obj/$(Configuration)/</BaseIntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

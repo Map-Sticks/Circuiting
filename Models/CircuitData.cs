@@ -5,6 +5,7 @@
         public Guid CircuitGuid { get; set; }
         public string DisplayLabel { get; set; } = string.Empty;
         public int CircuitNumber { get; set; }
+        public int? PoleIndex { get; set; }
         public string Description { get; set; } = string.Empty;
         public string BreakerSize { get; set; } = string.Empty;
         public string ProtectionType { get; set; } = string.Empty;
@@ -17,6 +18,7 @@
     {
         public Guid FixtureGuid { get; set; }
         public long RevitElementId { get; set; }
+        public string RevitUniqueId { get; set; } = string.Empty;
         public string FamilyName { get; set; } = string.Empty;
         public string RoomName { get; set; } = string.Empty;
     }

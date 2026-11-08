@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../Services/CircuitLabelCalculator.cs" Link="Services/CircuitLabelCalculator.cs" />
+    <Compile Include="../../Services/CircuitLayout.cs" Link="Services/CircuitLayout.cs" />
+    <Compile Include="../../Services/FixtureAssignmentSynchronizer.cs" Link="Services/FixtureAssignmentSynchronizer.cs" />
+    <Compile Include="../../Services/FixtureIdentity.cs" Link="Services/FixtureIdentity.cs" />
+    <Compile Include="../../Services/FixtureModelValidator.cs" Link="Services/FixtureModelValidator.cs" />
+    <Compile Include="../../Storage/ProjectDataSerializer.cs" Link="Storage/ProjectDataSerializer.cs" />
+    <Compile Include="../../ViewModels/DocumentSessionCache.cs" Link="ViewModels/DocumentSessionCache.cs" />
+    <Compile Include="../../ViewModels/CircuitEditHistory.cs" Link="ViewModels/CircuitEditHistory.cs" />
+    <Compile Include="../../ViewModels/CircuitFieldOptions.cs" Link="ViewModels/CircuitFieldOptions.cs" />
+    <Compile Include="../../ViewModels/ChassisFieldOptions.cs" Link="ViewModels/ChassisFieldOptions.cs" />
+    <Compile Include="../../ViewModels/CircuitTreeProjection.cs" Link="ViewModels/CircuitTreeProjection.cs" />
+    <Compile Include="../../ViewModels/CircuitTreeNodes.cs" Link="ViewModels/CircuitTreeNodes.cs" />
+  </ItemGroup>
+</Project>

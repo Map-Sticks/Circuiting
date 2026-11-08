@@ -7,8 +7,10 @@ namespace Circuiting.Services
         public int RowIndex { get; set; }
         public Side Side { get; set; }
         public int CircuitNumber { get; set; }
+        public int PhaseIndex { get; set; }
         public string PhaseLabel { get; set; } = string.Empty;
         public string DisplayLabel { get; set; } = string.Empty;
+        public int PoleIndex => checked(RowIndex * 2 + (Side == Side.Right ? 1 : 0));
     }
 
     public enum Side
@@ -21,6 +23,42 @@ namespace Circuiting.Services
     {
         public static List<PoleAssignment> Calculate(ChassisData chassis)
         {
+            return Calculate(chassis, 0);
+        }
+
+        public static List<PoleAssignment> Calculate(BoardData board, ChassisData chassis)
+        {
+            if (board == null) throw new ArgumentNullException(nameof(board));
+            if (chassis == null) throw new ArgumentNullException(nameof(chassis));
+
+            int previousOffset = 0;
+            ChassisData? previous = null;
+            foreach (ChassisData current in board.Chassis)
+            {
+                int phaseCount = current.PhaseLabels?.Count ?? 0;
+                int offset = current.ContinuePhaseFromPrevious && previous != null &&
+                    (previous.PhaseLabels?.Count ?? 0) > 0 && phaseCount > 0
+                    ? (previousOffset + previous.MaxPoles / 2) % phaseCount
+                    : 0;
+
+                if (ReferenceEquals(current, chassis))
+                    return Calculate(current, offset);
+
+                previous = current;
+                previousOffset = offset;
+            }
+
+            throw new ArgumentException("The chassis does not belong to the board.", nameof(chassis));
+        }
+
+        private static List<PoleAssignment> Calculate(ChassisData chassis, int phaseOffset)
+        {
+            if (chassis == null) throw new ArgumentNullException(nameof(chassis));
+            if (chassis.MaxPoles <= 0 || chassis.MaxPoles % 2 != 0)
+                throw new ArgumentOutOfRangeException(nameof(chassis), "The pole count must be a positive even number.");
+            if (chassis.StartingCircuit < 1)
+                throw new ArgumentOutOfRangeException(nameof(chassis), "The starting circuit must be positive.");
+
             var assignments = new List<PoleAssignment>();
 
             int patternLength = chassis.PhaseLabels?.Count ?? 0;
@@ -29,21 +67,12 @@ namespace Circuiting.Services
             // Per phase counters — left side odd, right side even
             // Starting from the chassis starting circuit number
             int startLeft = chassis.StartingCircuit;
-            int startRight = chassis.StartingCircuit + 1;
+            int startRight = checked(chassis.StartingCircuit + 1);
 
             // Each phase tracks its own counter independently
             int[] leftCounters = new int[patternLength == 0 ? 1 : patternLength];
             int[] rightCounters = new int[patternLength == 0 ? 1 : patternLength];
 
-            for (int i = 0; i < leftCounters.Length; i++)
-            {
-                leftCounters[i] = startLeft + (i * 0);
-                rightCounters[i] = startRight + (i * 0);
-            }
-
-            // Initialise counters properly
-            // Left starts at startLeft, increments by 2 per phase occurrence
-            // Right starts at startRight, increments by 2 per phase occurrence
             for (int i = 0; i < leftCounters.Length; i++)
             {
                 leftCounters[i] = startLeft;
@@ -52,7 +81,7 @@ namespace Circuiting.Services
 
             for (int row = 0; row < totalRows; row++)
             {
-                int phaseIndex = patternLength > 0 ? row % patternLength : 0;
+                int phaseIndex = patternLength > 0 ? (row + phaseOffset) % patternLength : 0;
 
                 string phaseLabel = (chassis.ShowPhaseLabel && patternLength > 0 && chassis.PhaseLabels != null)
                     ? chassis.PhaseLabels[phaseIndex]
@@ -66,6 +95,7 @@ namespace Circuiting.Services
                     RowIndex = row,
                     Side = Side.Left,
                     CircuitNumber = leftNum,
+                    PhaseIndex = phaseIndex,
                     PhaseLabel = phaseLabel,
                     DisplayLabel = FormatLabel(phaseLabel, leftNum, chassis)
                 });
@@ -75,13 +105,17 @@ namespace Circuiting.Services
                     RowIndex = row,
                     Side = Side.Right,
                     CircuitNumber = rightNum,
+                    PhaseIndex = phaseIndex,
                     PhaseLabel = phaseLabel,
                     DisplayLabel = FormatLabel(phaseLabel, rightNum, chassis)
                 });
 
                 // Advance this phase's counters by 2
-                leftCounters[phaseIndex] += 2;
-                rightCounters[phaseIndex] += 2;
+                if (row + Math.Max(patternLength, 1) < totalRows)
+                {
+                    leftCounters[phaseIndex] = checked(leftCounters[phaseIndex] + 2);
+                    rightCounters[phaseIndex] = checked(rightCounters[phaseIndex] + 2);
+                }
             }
 
             return assignments;

@@ -1,24 +1,39 @@
 ﻿using Autodesk.Revit.UI;
+using Autodesk.Revit.DB;
+using Circuiting.Commands;
 using Circuiting.Models;
 using Circuiting.Services;
+using Circuiting.Storage;
 using Circuiting.UI.Dialogs;
+using Circuiting.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Newtonsoft.Json;
-using WpfContextMenu = System.Windows.Controls.ContextMenu;
-using WpfMenuItem = System.Windows.Controls.MenuItem;
-using WpfGrid = System.Windows.Controls.Grid;
 
 namespace Circuiting.UI.DockablePanel
 {
-    public partial class CircuitManagerPane : UserControl, IDockablePaneProvider
+    public partial class CircuitManagerPane : UserControl, IDockablePaneProvider, ICircuitTreeActions
     {
-        private UIApplication? _uiApp;
-        private List<BoardData> _boards = new List<BoardData>();
-        private Stack<string> _undoStack = new Stack<string>();
-        private Stack<string> _redoStack = new Stack<string>();
+        private Document? _document;
+        private ProjectData _project = new ProjectData();
+        private List<BoardData> _boards
+        {
+            get => _project.Boards;
+            set => _project.Boards = value;
+        }
+        private readonly CircuitEditHistory _history = new CircuitEditHistory();
         private bool _dataLoaded = false;
+        private bool _requestPending;
+        private bool _applyingSettings;
+        private string _committedJson = string.Empty;
+        private readonly HashSet<long> _pendingAddedIds = new HashSet<long>();
+        private readonly HashSet<long> _pendingDeletedIds = new HashSet<long>();
+        private bool _pendingReload;
+        private readonly DocumentSessionCache<Document> _documentStates =
+            new DocumentSessionCache<Document>(document => document.IsValidObject);
+        private List<BoardTreeNode> _treeNodes = new List<BoardTreeNode>();
+        public bool HasOpened { get; private set; }
 
         private static readonly JsonSerializerSettings _jsonSettings =
             new JsonSerializerSettings
@@ -30,6 +45,7 @@ namespace Circuiting.UI.DockablePanel
         {
             InitializeComponent();
             PreviewKeyDown += OnPreviewKeyDown;
+            IsEnabled = false;
         }
 
         public void SetupDockablePane(DockablePaneProviderData data)
@@ -42,18 +58,188 @@ namespace Circuiting.UI.DockablePanel
             };
         }
 
-        public void SetApplication(UIApplication uiApp)
+        public bool OpenDocument(Document? document, bool forceReload = false)
         {
-            _uiApp = uiApp;
+            if (document == null || !document.IsValidObject || document.IsFamilyDocument)
+            {
+                ClearDocument();
+                StatusLabel.Text = "Open a Revit project to manage circuits.";
+                return false;
+            }
+            if (!forceReload && _dataLoaded && _document != null &&
+                _document.IsValidObject && document.Equals(_document))
+                return true;
+
+            try
+            {
+                if (_document != null && (!_document.IsValidObject || !document.Equals(_document)))
+                {
+                    _pendingAddedIds.Clear();
+                    _pendingDeletedIds.Clear();
+                    _pendingReload = false;
+                }
+                SetProject(document, BoardRepository.LoadProjectData(document));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Could not load circuit data: {0}", ex);
+                ClearDocument();
+                StatusLabel.Text = "Circuit data could not be loaded.";
+                MessageBox.Show(ex.Message, "Circuit Data Load Failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
         }
 
-        public void SetBoards(List<BoardData> boards)
+        public bool StartTracking(Document? document)
         {
-            _boards = boards;
+            HasOpened = true;
+            return OpenDocument(document, true);
+        }
+
+        private void SetProject(Document document, ProjectData project)
+        {
+            bool switched = _document == null || !_document.IsValidObject || !document.Equals(_document);
+            if (switched) CacheCurrentDocument();
+            string committedJson = ProjectDataSerializer.Serialize(project);
+            DocumentSessionState? saved = switched ? _documentStates.Restore(document, committedJson) : null;
+            if (switched) _history.Restore(saved);
+            else _history.ClearIfChanged(_committedJson, committedJson);
+            _document = document;
+            _project = project;
+            _committedJson = committedJson;
             _dataLoaded = true;
-            _undoStack.Clear();
-            _redoStack.Clear();
+            ApplyResolutionMode();
+            IsEnabled = !_requestPending;
             RefreshTree();
+            if (saved != null) RestoreExpandedState(saved.Expanded);
+        }
+
+        private void CacheCurrentDocument()
+        {
+            if (_document == null || !_document.IsValidObject) return;
+            if (!_dataLoaded || _requestPending)
+            {
+                _documentStates.Forget(_document);
+                return;
+            }
+            _documentStates.Remember(_document, _committedJson, _history.UndoTopFirst,
+                _history.RedoTopFirst, GetExpandedGuids());
+        }
+
+        private void ApplyResolutionMode()
+        {
+            _applyingSettings = true;
+            try
+            {
+                ModeToggle.IsChecked = _project.Settings.ResolutionMode == ResolutionMode.Manual;
+            }
+            finally
+            {
+                _applyingSettings = false;
+            }
+        }
+
+        public void ClearDocument()
+        {
+            CacheCurrentDocument();
+            _document = null;
+            _project = new ProjectData();
+            _committedJson = string.Empty;
+            _dataLoaded = false;
+            _history.Clear();
+            _pendingAddedIds.Clear();
+            _pendingDeletedIds.Clear();
+            _pendingReload = false;
+            IsEnabled = false;
+            BoardTree.ItemsSource = null;
+            _treeNodes.Clear();
+        }
+
+        public sealed class ClosingDocumentState
+        {
+            internal DocumentSessionHandle<Document> Handle { get; set; } = null!;
+            internal Document? ShowingDocument { get; set; }
+        }
+
+        public ClosingDocumentState PrepareDocumentClose(Document document)
+        {
+            return new ClosingDocumentState
+            {
+                Handle = _documentStates.TrackClosing(document),
+                ShowingDocument = _document != null && _document.IsValidObject && _document.Equals(document)
+                    ? _document : null
+            };
+        }
+
+        public void CompleteDocumentClose(ClosingDocumentState state, bool succeeded)
+        {
+            _documentStates.CompleteClosing(state.Handle, succeeded);
+            if (succeeded && state.ShowingDocument != null && ReferenceEquals(_document, state.ShowingDocument))
+            {
+                _document = null;
+                ClearDocument();
+            }
+        }
+
+        public bool IsShowing(Document document) =>
+            _dataLoaded && _document != null && _document.IsValidObject && _document.Equals(document);
+
+        private bool IsCurrentProject(ProjectData expected)
+        {
+            if (_dataLoaded && !_requestPending && ReferenceEquals(_project, expected)) return true;
+            MessageBox.Show("The active document or its circuit data changed. The operation was cancelled.",
+                "Circuit Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        private bool IsCurrentTarget(BoardData? board, ChassisData? chassis = null, CircuitData? circuit = null)
+        {
+            bool valid = _dataLoaded && !_requestPending &&
+                (board != null ? _boards.Contains(board) :
+                    chassis != null && _boards.Any(b => b.Chassis.Contains(chassis)));
+            if (valid && board != null && chassis != null)
+                valid = board.Chassis.Contains(chassis);
+            if (valid && circuit != null)
+                valid = chassis != null && chassis.Circuits.Contains(circuit);
+            if (valid) return true;
+            MessageBox.Show("The selected circuit data is no longer current. Reopen the menu and try again.",
+                "Circuit Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        public void HandleModelChanged(Document document, IEnumerable<long> addedIds,
+            IEnumerable<long> deletedIds, bool transactionCommitted)
+        {
+            if (!IsShowing(document)) return;
+            if (_requestPending)
+            {
+                if (transactionCommitted)
+                {
+                    _pendingAddedIds.UnionWith(addedIds);
+                    _pendingDeletedIds.UnionWith(deletedIds);
+                }
+                else
+                {
+                    _pendingReload = true;
+                }
+                return;
+            }
+
+            if (!OpenDocument(document, true)) return;
+            if (transactionCommitted && _project.Settings.ResolutionMode == ResolutionMode.Automatic)
+            {
+                long[] added = addedIds.ToArray();
+                long[] deleted = deletedIds.ToArray();
+                if (added.Length > 0 || deleted.Length > 0)
+                {
+                    QueueRequest(RevitAction.ResolveChanges, ProjectDataSerializer.Serialize(_project),
+                        addedIds: added, deletedIds: deleted);
+                    return;
+                }
+            }
+            StatusLabel.Text = "Model changed. Validate fixture assignments if elements were copied or deleted.";
         }
 
         public void UpdateStatus(string message)
@@ -64,91 +250,164 @@ namespace Circuiting.UI.DockablePanel
 
         private void PushUndoState()
         {
-            string snapshot = JsonConvert.SerializeObject(
-                _boards, _jsonSettings);
-            _undoStack.Push(snapshot);
-            _redoStack.Clear();
-
-            if (_undoStack.Count > 50)
-            {
-                // Keep stack manageable — convert to array,
-                // keep last 50, rebuild
-                string[] items = _undoStack.ToArray();
-                _undoStack.Clear();
-                for (int i = Math.Min(49, items.Length - 1);
-                    i >= 0; i--)
-                {
-                    _undoStack.Push(items[i]);
-                }
-            }
+            _history.Push(ProjectDataSerializer.Serialize(_project));
         }
 
         private void SaveAndRefresh()
         {
-            RefreshTree();
-            TriggerAutoSave();
-        }
-
-        private void TriggerAutoSave()
-        {
-            if (!_dataLoaded) return;
-
+            if (!_dataLoaded || _document == null) return;
             try
             {
-                Circuiting.Application.EventHandler.CurrentAction =
-                    Commands.RevitAction.Save;
-                Circuiting.Application.EventHandler.BoardsToSave =
-                    _boards;
-                Circuiting.Application.RevitEvent.Raise();
+                string desired = ProjectDataSerializer.Serialize(_project);
+                RefreshTree();
+                QueueRequest(RevitAction.Save, desired);
             }
-            catch
+            catch (Exception ex)
             {
-                StatusLabel.Text = "Auto-save failed";
+                ReportRequestFailure(ex.Message);
             }
+        }
+
+        private void QueueRequest(RevitAction action, string desired, Guid boardGuid = default,
+            Guid chassisGuid = default, Guid circuitGuid = default,
+            IEnumerable<long>? addedIds = null, IEnumerable<long>? deletedIds = null)
+        {
+            if (!_dataLoaded || _document == null || _requestPending)
+                throw new InvalidOperationException("The circuit panel is not ready for another Revit request.");
+            Document document = _document;
+            _requestPending = true;
+            IsEnabled = false;
+            try
+            {
+                var request = new RevitRequest(action, document, _committedJson, desired,
+                    result => CompleteRequest(document, action, result), boardGuid, chassisGuid, circuitGuid,
+                    addedIds, deletedIds);
+                Circuiting.Application.EventHandler.Enqueue(request, Circuiting.Application.RevitEvent);
+                StatusLabel.Text = action == RevitAction.Save ? "Saving..." : "Waiting for Revit...";
+            }
+            catch (Exception ex)
+            {
+                _requestPending = false;
+                ReportRequestFailure(ex.Message);
+            }
+        }
+
+        private void CompleteRequest(Document document, RevitAction action, RevitResult result)
+        {
+            _requestPending = false;
+            if (!IsShowing(document))
+            {
+                IsEnabled = _dataLoaded;
+                StatusLabel.Text = result.Success ? result.Message : "Previous document request failed: " + result.Message;
+                if (!result.Success)
+                    MessageBox.Show(result.Message, "Circuit Manager Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                if (_dataLoaded) ProcessPendingChanges();
+                return;
+            }
+
+            if (!result.Success)
+            {
+                ReportRequestFailure(result.Message);
+                return;
+            }
+            if (result.Changed && result.Project != null)
+            {
+                if (action == RevitAction.AssignFixtures || action == RevitAction.RemoveFixtures)
+                    PushUndoState();
+                if (action == RevitAction.Reload || action == RevitAction.Validate ||
+                    action == RevitAction.ResolveChanges)
+                {
+                    _history.Clear();
+                }
+                _project = result.Project;
+                _committedJson = ProjectDataSerializer.Serialize(_project);
+                ApplyResolutionMode();
+                RefreshTree();
+            }
+            IsEnabled = true;
+            StatusLabel.Text = result.Message;
+            ProcessPendingChanges();
+        }
+
+        private void ProcessPendingChanges()
+        {
+            if (_pendingReload)
+            {
+                _pendingReload = false;
+                _pendingAddedIds.Clear();
+                _pendingDeletedIds.Clear();
+                QueueRequest(RevitAction.Reload, ProjectDataSerializer.Serialize(_project));
+            }
+            else if (_project.Settings.ResolutionMode == ResolutionMode.Automatic &&
+                (_pendingAddedIds.Count > 0 || _pendingDeletedIds.Count > 0))
+            {
+                long[] added = _pendingAddedIds.ToArray();
+                long[] deleted = _pendingDeletedIds.ToArray();
+                _pendingAddedIds.Clear();
+                _pendingDeletedIds.Clear();
+                QueueRequest(RevitAction.ResolveChanges, ProjectDataSerializer.Serialize(_project),
+                    addedIds: added, deletedIds: deleted);
+            }
+            else
+            {
+                _pendingAddedIds.Clear();
+                _pendingDeletedIds.Clear();
+            }
+        }
+
+        private void ReportRequestFailure(string message)
+        {
+            System.Diagnostics.Trace.TraceError("Circuit manager operation failed: {0}", message);
+            _pendingAddedIds.Clear();
+            _pendingDeletedIds.Clear();
+            _pendingReload = false;
+            if (!string.IsNullOrEmpty(_committedJson))
+            {
+                _project = ProjectDataSerializer.Deserialize(_committedJson);
+                _history.Clear();
+                ApplyResolutionMode();
+                RefreshTree();
+            }
+            _dataLoaded = false;
+            IsEnabled = false;
+            MessageBox.Show(message + "\n\nReopen the panel to reload the model before retrying.",
+                "Circuit Manager Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusLabel.Text = "Operation failed. Reopen the panel.";
         }
 
         private void Undo()
         {
-            if (_undoStack.Count == 0)
+            if (!_history.CanUndo)
             {
                 StatusLabel.Text = "Nothing to undo";
                 return;
             }
 
-            string currentState = JsonConvert.SerializeObject(
-                _boards, _jsonSettings);
-            _redoStack.Push(currentState);
-
-            string previousState = _undoStack.Pop();
-            _boards = JsonConvert.DeserializeObject<List<BoardData>>(
-                previousState, _jsonSettings)
-                ?? new List<BoardData>();
+            string previousState = _history.Undo(ProjectDataSerializer.Serialize(_project));
+            _project = ProjectDataSerializer.Deserialize(previousState);
+            ApplyResolutionMode();
 
             SaveAndRefresh();
             StatusLabel.Text =
-                $"Undo ({_undoStack.Count} step(s) remaining)";
+                $"Undo ({_history.UndoCount} step(s) remaining)";
         }
 
         private void Redo()
         {
-            if (_redoStack.Count == 0)
+            if (!_history.CanRedo)
             {
                 StatusLabel.Text = "Nothing to redo";
                 return;
             }
 
-            string currentState = JsonConvert.SerializeObject(
-                _boards, _jsonSettings);
-            _undoStack.Push(currentState);
-
-            string nextState = _redoStack.Pop();
-            _boards = JsonConvert.DeserializeObject<List<BoardData>>(
-                nextState, _jsonSettings)
-                ?? new List<BoardData>();
+            string nextState = _history.Redo(ProjectDataSerializer.Serialize(_project));
+            _project = ProjectDataSerializer.Deserialize(nextState);
+            ApplyResolutionMode();
 
             SaveAndRefresh();
             StatusLabel.Text =
-                $"Redo ({_redoStack.Count} step(s) remaining)";
+                $"Redo ({_history.UndoCount} step(s) remaining)";
         }
 
         private void OnPreviewKeyDown(object sender,
@@ -170,286 +429,28 @@ namespace Circuiting.UI.DockablePanel
                 e.Handled = true;
             }
         }
-        // ─── Tag for circuit rows ────────────────────────────────
-
-        private class CircuitRowTag
-        {
-            public BoardData Board { get; set; } = null!;
-            public ChassisData Chassis { get; set; } = null!;
-            public PoleAssignment Left { get; set; } = null!;
-            public PoleAssignment Right { get; set; } = null!;
-            public bool LeftConsumed { get; set; }
-            public bool RightConsumed { get; set; }
-            public ConsumedPoleInfo? LeftConsumedInfo { get; set; }
-            public ConsumedPoleInfo? RightConsumedInfo { get; set; }
-        }
-        private class ConsumedPoleInfo
-        {
-            public CircuitData Parent { get; set; } = null!;
-            public bool IsDescriptionRow { get; set; }
-        }
-        private Dictionary<string, ConsumedPoleInfo> BuildConsumedPoles(
-            ChassisData chassis, List<PoleAssignment> assignments)
-        {
-            Dictionary<string, ConsumedPoleInfo> consumed =
-                new Dictionary<string, ConsumedPoleInfo>();
-
-            foreach (CircuitData circuit in chassis.Circuits)
-            {
-                if (circuit.Poles <= 1) continue;
-
-                PoleAssignment? startPole = assignments
-                    .FirstOrDefault(a =>
-                        a.DisplayLabel == circuit.DisplayLabel);
-                if (startPole == null) continue;
-
-                List<PoleAssignment> following = assignments
-                    .Where(a => a.Side == startPole.Side
-                        && a.RowIndex > startPole.RowIndex)
-                    .OrderBy(a => a.RowIndex)
-                    .Take(circuit.Poles - 1)
-                    .ToList();
-
-                bool isFirst = true;
-                foreach (PoleAssignment pole in following)
-                {
-                    consumed[pole.DisplayLabel] = new ConsumedPoleInfo
-                    {
-                        Parent = circuit,
-                        IsDescriptionRow = isFirst
-                    };
-                    isFirst = false;
-                }
-            }
-
-            return consumed;
-        }
         // ─── Tree State Preservation ─────────────────────────────
 
         private HashSet<Guid> GetExpandedGuids()
         {
-            HashSet<Guid> expanded = new HashSet<Guid>();
-
-            foreach (object obj in BoardTree.Items)
+            var expanded = new HashSet<Guid>();
+            foreach (BoardTreeNode board in _treeNodes)
             {
-                if (obj is not TreeViewItem boardItem) continue;
-                if (boardItem.Tag is BoardData board
-                    && boardItem.IsExpanded)
-                {
-                    expanded.Add(board.BoardGuid);
-
-                    foreach (object childObj in boardItem.Items)
-                    {
-                        if (childObj is not TreeViewItem chassisItem)
-                            continue;
-                        if (chassisItem.Tag is ChassisData chassis
-                            && chassisItem.IsExpanded)
-                        {
-                            expanded.Add(chassis.ChassisGuid);
-                        }
-                    }
-                }
+                if (board.IsExpanded) expanded.Add(board.Board.BoardGuid);
+                foreach (ChassisTreeNode chassis in board.Chassis)
+                    if (chassis.IsExpanded) expanded.Add(chassis.Chassis.ChassisGuid);
             }
-
             return expanded;
         }
 
         private void RestoreExpandedState(HashSet<Guid> expanded)
         {
-            foreach (object obj in BoardTree.Items)
+            foreach (BoardTreeNode board in _treeNodes)
             {
-                if (obj is not TreeViewItem boardItem) continue;
-                if (boardItem.Tag is BoardData board)
-                {
-                    boardItem.IsExpanded =
-                        expanded.Contains(board.BoardGuid);
-
-                    foreach (object childObj in boardItem.Items)
-                    {
-                        if (childObj is not TreeViewItem chassisItem)
-                            continue;
-                        if (chassisItem.Tag is ChassisData chassis)
-                        {
-                            chassisItem.IsExpanded =
-                                expanded.Contains(chassis.ChassisGuid);
-                        }
-                    }
-                }
+                board.IsExpanded = expanded.Contains(board.Board.BoardGuid);
+                foreach (ChassisTreeNode chassis in board.Chassis)
+                    chassis.IsExpanded = expanded.Contains(chassis.Chassis.ChassisGuid);
             }
-        }
-
-        // ─── Multi-Pole Helpers ──────────────────────────────────
-
-        private bool IsValidMultiPoleStart(
-            PoleAssignment assignment,
-            ChassisData chassis,
-            int poles,
-            List<PoleAssignment> allAssignments)
-        {
-            int phaseCount = chassis.PhaseLabels?.Count ?? 1;
-            if (phaseCount <= 1) return true;
-
-            if (assignment.RowIndex % phaseCount != 0)
-                return false;
-
-            int remaining = allAssignments
-                .Count(a => a.Side == assignment.Side
-                    && a.RowIndex >= assignment.RowIndex);
-
-            return remaining >= poles;
-        }
-
-        // ─── Display Formatting ──────────────────────────────────
-
-        private string FormatProtection(CircuitData circuit)
-        {
-            if (string.IsNullOrEmpty(circuit.ProtectionType))
-                return string.Empty;
-            if (circuit.ProtectionType == "MCB")
-                return "MCB";
-            if (string.IsNullOrEmpty(circuit.EarthLeakage))
-                return circuit.ProtectionType;
-            return $"{circuit.EarthLeakage} {circuit.ProtectionType}";
-        }
-
-        // ─── Grid Row Builder ────────────────────────────────────
-
-        private void AddCell(
-            WpfGrid grid, int column, string text,
-            bool wrap = false,
-            System.Windows.Media.Brush? foreground = null)
-        {
-            TextBlock tb = new TextBlock
-            {
-                Text = text,
-                Foreground = foreground ?? new SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(170, 170, 170)),
-                FontFamily =
-                    new System.Windows.Media.FontFamily("Consolas"),
-                FontSize = 11,
-                TextWrapping = wrap
-                    ? TextWrapping.Wrap : TextWrapping.NoWrap,
-                TextTrimming = wrap
-                    ? TextTrimming.None
-                    : TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(2, 1, 2, 1)
-            };
-            WpfGrid.SetColumn(tb, column);
-            grid.Children.Add(tb);
-        }
-
-        private WpfGrid CreateCircuitRowGrid(
-            PoleAssignment left, PoleAssignment right,
-            CircuitData? leftCircuit, CircuitData? rightCircuit,
-            bool leftConsumed, bool rightConsumed,
-            ConsumedPoleInfo? leftConsumedInfo,
-            ConsumedPoleInfo? rightConsumedInfo)
-        {
-            WpfGrid grid = new WpfGrid();
-
-            int[] widths = { 45, 130, 75, 35, 15, 35, 75, 130, 45 };
-            foreach (int w in widths)
-            {
-                grid.ColumnDefinitions.Add(
-                    new ColumnDefinition
-                    { Width = new GridLength(w) });
-            }
-
-            SolidColorBrush dimBrush = new SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(100, 100, 100));
-            SolidColorBrush labelBrush = new SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(200, 200, 200));
-
-            // ── Left side ──
-            AddCell(grid, 0, left.DisplayLabel,
-                foreground: labelBrush);
-
-            if (leftConsumed && leftConsumedInfo != null)
-            {
-                if (leftConsumedInfo.IsDescriptionRow)
-                {
-                    AddCell(grid, 1,
-                        leftConsumedInfo.Parent.Description,
-                        wrap: true);
-                    AddCell(grid, 2,
-                        FormatProtection(leftConsumedInfo.Parent));
-                    AddCell(grid, 3,
-                        leftConsumedInfo.Parent.BreakerSize);
-                }
-                // Non-description consumed rows: blank
-            }
-            else if (leftCircuit != null
-                && !string.IsNullOrEmpty(leftCircuit.Description))
-            {
-                if (leftCircuit.Poles > 1)
-                {
-                    // Start of multi-pole: blank, description
-                    // will appear on the middle consumed row
-                }
-                else
-{
-                    string leftDesc = leftCircuit.Description;
-                    if (leftCircuit.Fixtures.Count > 0)
-                        leftDesc += $" [{leftCircuit.Fixtures.Count}]";
-
-                    AddCell(grid, 1, leftDesc, wrap: true);
-                    AddCell(grid, 2,
-                        FormatProtection(leftCircuit));
-                    AddCell(grid, 3, leftCircuit.BreakerSize);
-                }
-            }
-            else if (!leftConsumed)
-            {
-                AddCell(grid, 1, "Spare", foreground: dimBrush);
-            }
-
-            // ── Separator ──
-            AddCell(grid, 4, "│", foreground: dimBrush);
-
-            // ── Right side (mirrored) ──
-            if (rightConsumed && rightConsumedInfo != null)
-            {
-                if (rightConsumedInfo.IsDescriptionRow)
-                {
-                    AddCell(grid, 5,
-                        rightConsumedInfo.Parent.BreakerSize);
-                    AddCell(grid, 6,
-                        FormatProtection(rightConsumedInfo.Parent));
-                    AddCell(grid, 7,
-                        rightConsumedInfo.Parent.Description,
-                        wrap: true);
-                }
-                // Non-description consumed rows: blank
-            }
-            else if (rightCircuit != null
-                && !string.IsNullOrEmpty(rightCircuit.Description))
-            {
-                if (rightCircuit.Poles > 1)
-                {
-                    // Start of multi-pole: blank
-                }
-                else
-                {
-                    string rightDesc = rightCircuit.Description;
-                    if (rightCircuit.Fixtures.Count > 0)
-                        rightDesc += $" [{rightCircuit.Fixtures.Count}]";
-
-                    AddCell(grid, 5, rightCircuit.BreakerSize);
-                    AddCell(grid, 6,
-                        FormatProtection(rightCircuit));
-                    AddCell(grid, 7, rightDesc, wrap: true);
-                }
-            }
-            else if (!rightConsumed)
-            {
-                AddCell(grid, 7, "Spare", foreground: dimBrush);
-            }
-
-            AddCell(grid, 8, right.DisplayLabel,
-                foreground: labelBrush);
-
-            return grid;
         }
 
         // ─── Tree Building ───────────────────────────────────────
@@ -457,959 +458,26 @@ namespace Circuiting.UI.DockablePanel
         public void RefreshTree()
         {
             HashSet<Guid> expandedState = GetExpandedGuids();
-
-            BoardTree.Items.Clear();
-
-            foreach (BoardData board in _boards)
-            {
-                TreeViewItem boardNode = new TreeViewItem
-                {
-                    Header = CreateBoardHeader(board),
-                    IsExpanded = true,
-                    Tag = board,
-                    Foreground = new SolidColorBrush(
-                        System.Windows.Media.Color.FromRgb(
-                            255, 255, 255)),
-                    ContextMenu = CreateBoardContextMenu(board)
-                };
-
-                foreach (ChassisData chassis in board.Chassis)
-                {
-                    bool chassisIsThreePhase =
-                        (chassis.PhaseLabels?.Count ?? 0) >= 3;
-                    string chassisIcon = chassisIsThreePhase ? "⚡" : "💡";
-                    string phaseInfo = chassisIsThreePhase ? "3φ" : "1φ";
-
-                    TreeViewItem chassisNode = new TreeViewItem
-                    {
-                        Header = $"{chassisIcon} {chassis.Name}  " +
-                                 $"({phaseInfo}, Poles: {chassis.MaxPoles}, " +
-                                 $"Start: {chassis.StartingCircuit})",
-                        IsExpanded = false,
-                        Tag = chassis,
-                        Foreground = new SolidColorBrush(
-                            System.Windows.Media.Color.FromRgb(
-                                200, 200, 200)),
-                        ContextMenu = CreateChassisContextMenu(
-                            board, chassis)
-                    };
-
-                    List<PoleAssignment> assignments =
-                        CircuitLabelCalculator.Calculate(chassis);
-                    Dictionary<string, ConsumedPoleInfo> consumedPoles =
-                                            BuildConsumedPoles(chassis, assignments);
-                    int totalRows = chassis.MaxPoles / 2;
-
-                    for (int row = 0; row < totalRows; row++)
-                    {
-                        PoleAssignment left = assignments.First(
-                            a => a.RowIndex == row
-                                && a.Side == Side.Left);
-                        PoleAssignment right = assignments.First(
-                            a => a.RowIndex == row
-                                && a.Side == Side.Right);
-
-                        bool leftConsumed = consumedPoles
-                            .ContainsKey(left.DisplayLabel);
-                        bool rightConsumed = consumedPoles
-                            .ContainsKey(right.DisplayLabel);
-
-                        CircuitData? leftCircuit = leftConsumed
-                            ? null
-                            : chassis.Circuits.FirstOrDefault(c =>
-                                c.DisplayLabel ==
-                                left.DisplayLabel);
-                        CircuitData? rightCircuit = rightConsumed
-                            ? null
-                            : chassis.Circuits.FirstOrDefault(c =>
-                                c.DisplayLabel ==
-                                right.DisplayLabel);
-
-                        ConsumedPoleInfo? leftInfo = leftConsumed
-                            ? consumedPoles[left.DisplayLabel]
-                            : null;
-                        ConsumedPoleInfo? rightInfo = rightConsumed
-                            ? consumedPoles[right.DisplayLabel]
-                            : null;
-
-                        WpfGrid rowGrid = CreateCircuitRowGrid(
-                            left, right,
-                            leftCircuit, rightCircuit,
-                            leftConsumed, rightConsumed,
-                            leftInfo, rightInfo);
-
-                        CircuitRowTag rowTag = new CircuitRowTag
-                        {
-                            Board = board,
-                            Chassis = chassis,
-                            Left = left,
-                            Right = right,
-                            LeftConsumed = leftConsumed,
-                            RightConsumed = rightConsumed,
-                            LeftConsumedInfo = leftInfo,
-                            RightConsumedInfo = rightInfo
-                        };
-
-                        TreeViewItem circuitNode = new TreeViewItem
-                        {
-                            Header = rowGrid,
-                            Tag = rowTag,
-                            ContextMenu = CreateCircuitRowContextMenu(rowTag)
-                        };
-
-                        circuitNode.MouseDoubleClick +=
-                            CircuitRow_DoubleClick;
-
-                        chassisNode.Items.Add(circuitNode);
-                    }
-
-                    boardNode.Items.Add(chassisNode);
-                }
-
-                BoardTree.Items.Add(boardNode);
-            }
-
-            RestoreExpandedState(expandedState);
-
+            _treeNodes = CircuitTreeProjection.Build(_boards, this, expandedState);
+            BoardTree.ItemsSource = _treeNodes;
             StatusLabel.Text = $"{_boards.Count} board(s) loaded";
         }
 
-        // ─── Board Header ────────────────────────────────────────
-
-        private StackPanel CreateBoardHeader(BoardData board)
+        private void TreeHeader_Loaded(object sender, RoutedEventArgs e)
         {
-            StackPanel panel = new StackPanel
+            if (sender is not FrameworkElement header || header.ContextMenu == null) return;
+            DependencyObject? parent = VisualTreeHelper.GetParent(header);
+            while (parent != null && parent is not TreeViewItem)
+                parent = VisualTreeHelper.GetParent(parent);
+            if (parent is not TreeViewItem item)
             {
-                Orientation = Orientation.Horizontal
-            };
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "📋 ",
-                FontSize = 13
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = board.DisplayName,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 13,
-                Foreground = new SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(
-                        255, 255, 255))
-            });
-
-            string phaseText = board.Supply == SupplyType.ThreePhase
-                ? "3 Phase" : "1 Phase";
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = $"  ({phaseText})",
-                FontSize = 11,
-                Foreground = new SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(
-                        150, 150, 150)),
-                VerticalAlignment = VerticalAlignment.Center
-            });
-
-            return panel;
-        }
-
-        // ─── Context Menus ───────────────────────────────────────
-
-        private WpfContextMenu CreateBoardContextMenu(BoardData board)
-        {
-            WpfContextMenu menu = new WpfContextMenu();
-
-            WpfMenuItem addChassis = new WpfMenuItem
-            { Header = "➕  Add Chassis" };
-            addChassis.Click += (s, e) => OnAddChassis(board);
-            menu.Items.Add(addChassis);
-
-            menu.Items.Add(new Separator());
-
-            WpfMenuItem rename = new WpfMenuItem
-            { Header = "✏️  Rename Board" };
-            rename.Click += (s, e) => OnRenameBoard(board);
-            menu.Items.Add(rename);
-
-            WpfMenuItem delete = new WpfMenuItem
-            { Header = "❌  Delete Board" };
-            delete.Click += (s, e) => OnDeleteBoard(board);
-            menu.Items.Add(delete);
-
-            return menu;
-        }
-
-        private WpfContextMenu CreateChassisContextMenu(
-            BoardData board, ChassisData chassis)
-        {
-            WpfContextMenu menu = new WpfContextMenu();
-
-            WpfMenuItem edit = new WpfMenuItem
-            { Header = "⚙️  Edit Chassis" };
-            edit.Click += (s, e) => OnEditChassis(board, chassis);
-            menu.Items.Add(edit);
-
-            WpfMenuItem bulkEdit = new WpfMenuItem
-            { Header = "📝  Bulk Edit Circuits" };
-            bulkEdit.Click += (s, e) =>
-                OnBulkEditChassis(board, chassis);
-            menu.Items.Add(bulkEdit);
-
-            WpfMenuItem clearCircuits = new WpfMenuItem
-            { Header = "🧹  Clear All Circuits" };
-            clearCircuits.Click += (s, e) =>
-                OnClearAllCircuits(chassis);
-            menu.Items.Add(clearCircuits);
-
-            menu.Items.Add(new Separator());
-
-            WpfMenuItem delete = new WpfMenuItem
-            { Header = "❌  Delete Chassis" };
-            delete.Click += (s, e) =>
-                OnDeleteChassis(board, chassis);
-            menu.Items.Add(delete);
-
-            return menu;
-        }
-
-        // ─── Circuit Row Double Click ────────────────────────────
-
-        private void CircuitRow_DoubleClick(object sender,
-    System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (sender is not TreeViewItem item) return;
-            if (item.Tag is not CircuitRowTag tag) return;
-
-            e.Handled = true;
-
-            // Resolve what to edit on each side
-            // If consumed, edit the parent circuit instead
-            string leftLabel;
-            CircuitData? leftExisting;
-            if (tag.LeftConsumed && tag.LeftConsumedInfo != null)
-            {
-                leftLabel = tag.LeftConsumedInfo.Parent.DisplayLabel;
-                leftExisting = tag.LeftConsumedInfo.Parent;
-            }
-            else
-            {
-                leftLabel = tag.Left.DisplayLabel;
-                leftExisting = tag.Chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == tag.Left.DisplayLabel);
-            }
-
-            string rightLabel;
-            CircuitData? rightExisting;
-            if (tag.RightConsumed && tag.RightConsumedInfo != null)
-            {
-                rightLabel = tag.RightConsumedInfo.Parent.DisplayLabel;
-                rightExisting = tag.RightConsumedInfo.Parent;
-            }
-            else
-            {
-                rightLabel = tag.Right.DisplayLabel;
-                rightExisting = tag.Chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == tag.Right.DisplayLabel);
-            }
-
-            bool allowMultiPole =
-                (tag.Chassis.PhaseLabels?.Count ?? 0) >= 3;
-
-            CircuitEditDialog dialog = new CircuitEditDialog(
-                leftLabel, rightLabel,
-                leftExisting, rightExisting,
-                allowMultiPole);
-            dialog.ShowDialog();
-
-            if (!dialog.Confirmed) return;
-
-            PushUndoState();
-
-            List<PoleAssignment> assignments =
-                CircuitLabelCalculator.Calculate(tag.Chassis);
-
-            // Save left
-            if (dialog.LeftResult != null)
-            {
-                if (dialog.LeftResult.Poles > 1)
-                {
-                    PoleAssignment? leftPole = assignments
-                        .FirstOrDefault(a =>
-                            a.DisplayLabel == leftLabel);
-
-                    if (leftPole != null && !IsValidMultiPoleStart(
-                        leftPole, tag.Chassis,
-                        dialog.LeftResult.Poles, assignments))
-                    {
-                        string firstPhase =
-                            tag.Chassis.PhaseLabels?.Count > 0
-                            ? tag.Chassis.PhaseLabels[0] : "R";
-                        MessageBox.Show(
-                            $"A {dialog.LeftResult.Poles}-pole " +
-                            $"circuit must start at a " +
-                            $"{firstPhase} position.",
-                            "Invalid Position",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
-                        return;
-                    }
-
-                    if (leftPole != null)
-                        RemoveConsumedCircuits(tag.Chassis,
-                            leftPole, dialog.LeftResult.Poles,
-                            assignments);
-                }
-
-                dialog.LeftResult.DisplayLabel = leftLabel;
-                dialog.LeftResult.CircuitNumber =
-                    leftExisting?.CircuitNumber ?? 0;
-
-                CircuitData? existingInList = tag.Chassis.Circuits
-                    .FirstOrDefault(c => c.DisplayLabel == leftLabel);
-
-                if (existingInList != null)
-                {
-                    int idx = tag.Chassis.Circuits
-                        .IndexOf(existingInList);
-                    if (idx >= 0) tag.Chassis.Circuits[idx] =
-                        dialog.LeftResult;
-                }
-                else
-                {
-                    tag.Chassis.Circuits.Add(dialog.LeftResult);
-                }
-            }
-
-            // Save right
-            if (dialog.RightResult != null)
-            {
-                if (dialog.RightResult.Poles > 1)
-                {
-                    PoleAssignment? rightPole = assignments
-                        .FirstOrDefault(a =>
-                            a.DisplayLabel == rightLabel);
-
-                    if (rightPole != null && !IsValidMultiPoleStart(
-                        rightPole, tag.Chassis,
-                        dialog.RightResult.Poles, assignments))
-                    {
-                        string firstPhase =
-                            tag.Chassis.PhaseLabels?.Count > 0
-                            ? tag.Chassis.PhaseLabels[0] : "R";
-                        MessageBox.Show(
-                            $"A {dialog.RightResult.Poles}-pole " +
-                            $"circuit must start at a " +
-                            $"{firstPhase} position.",
-                            "Invalid Position",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
-                        return;
-                    }
-
-                    if (rightPole != null)
-                        RemoveConsumedCircuits(tag.Chassis,
-                            rightPole, dialog.RightResult.Poles,
-                            assignments);
-                }
-
-                dialog.RightResult.DisplayLabel = rightLabel;
-                dialog.RightResult.CircuitNumber =
-                    rightExisting?.CircuitNumber ?? 0;
-
-                CircuitData? existingInList = tag.Chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == rightLabel);
-
-                if (existingInList != null)
-                {
-                    int idx = tag.Chassis.Circuits
-                        .IndexOf(existingInList);
-                    if (idx >= 0) tag.Chassis.Circuits[idx] =
-                        dialog.RightResult;
-                }
-                else
-                {
-                    tag.Chassis.Circuits.Add(dialog.RightResult);
-                }
-            }
-
-            SaveAndRefresh();
-        }
-
-        private void RemoveConsumedCircuits(
-            ChassisData chassis, PoleAssignment startPole,
-            int poles, List<PoleAssignment> allAssignments)
-        {
-            List<PoleAssignment> consumed = allAssignments
-                .Where(a => a.Side == startPole.Side
-                    && a.RowIndex > startPole.RowIndex)
-                .OrderBy(a => a.RowIndex)
-                .Take(poles - 1)
-                .ToList();
-
-            foreach (PoleAssignment pole in consumed)
-            {
-                CircuitData? existing = chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == pole.DisplayLabel);
-                if (existing != null)
-                    chassis.Circuits.Remove(existing);
-            }
-        }
-
-        // ─── Circuit Row Context Menu ────────────────────────
-
-        private WpfContextMenu CreateCircuitRowContextMenu(
-    CircuitRowTag tag)
-        {
-            WpfContextMenu menu = new WpfContextMenu();
-
-            // ── Left side ──
-            CircuitData? leftCircuit;
-            string leftLabel;
-
-            if (tag.LeftConsumed && tag.LeftConsumedInfo != null)
-            {
-                leftCircuit = tag.LeftConsumedInfo.Parent;
-                leftLabel = leftCircuit.DisplayLabel;
-            }
-            else
-            {
-                leftLabel = tag.Left.DisplayLabel;
-                leftCircuit = tag.Chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == leftLabel);
-            }
-
-            if (leftCircuit != null
-                && !string.IsNullOrEmpty(leftCircuit.Description))
-            {
-                string suffix = tag.LeftConsumed
-                    ? $" (3φ from {leftLabel})" : "";
-
-                WpfMenuItem deleteLeft = new WpfMenuItem
-                {
-                    Header = $"🗑️  Delete Left — " +
-                        $"{leftLabel}{suffix}"
-                };
-                deleteLeft.Click += (s, e) =>
-                    OnDeleteCircuit(tag.Chassis, leftCircuit);
-                menu.Items.Add(deleteLeft);
-
-                WpfMenuItem assignLeft = new WpfMenuItem
-                {
-                    Header = $"📌  Assign Fixtures — {leftLabel}"
-                };
-                assignLeft.Click += (s, e) =>
-                    OnAssignFixtures(tag.Board, tag.Chassis,
-                        leftCircuit);
-                menu.Items.Add(assignLeft);
-
-                if (leftCircuit.Fixtures.Count > 0)
-                {
-                    WpfMenuItem selectLeft = new WpfMenuItem
-                    {
-                        Header = $"👁️  Select in Model — " +
-                            $"{leftLabel} " +
-                            $"({leftCircuit.Fixtures.Count})"
-                    };
-                    selectLeft.Click += (s, e) =>
-                        OnSelectFixtures(tag.Board, tag.Chassis,
-                            leftCircuit);
-                    menu.Items.Add(selectLeft);
-
-                    WpfMenuItem removeLeft = new WpfMenuItem
-                    {
-                        Header = $"🔗  Pick Fixtures to Remove — " +
-                            $"{leftLabel}"
-                    };
-                    removeLeft.Click += (s, e) =>
-                        OnRemoveFixtures(tag.Board, tag.Chassis,
-                            leftCircuit);
-                    menu.Items.Add(removeLeft);
-                }
-            }
-            else if (!tag.LeftConsumed)
-            {
-                WpfMenuItem assignLeftSpare = new WpfMenuItem
-                {
-                    Header = $"📌  Assign Fixtures — " +
-                        $"{tag.Left.DisplayLabel} (spare)"
-                };
-                assignLeftSpare.Click += (s, e) =>
-                    OnAssignFixturesToSpare(tag.Board, tag.Chassis,
-                        tag.Left);
-                menu.Items.Add(assignLeftSpare);
-            }
-            else
-            {
-                WpfMenuItem leftInfo = new WpfMenuItem
-                {
-                    Header = $"⬅  {tag.Left.DisplayLabel} " +
-                        $"(part of multi-pole)",
-                    IsEnabled = false
-                };
-                menu.Items.Add(leftInfo);
-            }
-
-            menu.Items.Add(new Separator());
-
-            // ── Right side ──
-            CircuitData? rightCircuit;
-            string rightLabel;
-
-            if (tag.RightConsumed && tag.RightConsumedInfo != null)
-            {
-                rightCircuit = tag.RightConsumedInfo.Parent;
-                rightLabel = rightCircuit.DisplayLabel;
-            }
-            else
-            {
-                rightLabel = tag.Right.DisplayLabel;
-                rightCircuit = tag.Chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel == rightLabel);
-            }
-
-            if (rightCircuit != null
-                && !string.IsNullOrEmpty(rightCircuit.Description))
-            {
-                string suffix = tag.RightConsumed
-                    ? $" (3φ from {rightLabel})" : "";
-
-                WpfMenuItem deleteRight = new WpfMenuItem
-                {
-                    Header = $"🗑️  Delete Right — " +
-                        $"{rightLabel}{suffix}"
-                };
-                deleteRight.Click += (s, e) =>
-                    OnDeleteCircuit(tag.Chassis, rightCircuit);
-                menu.Items.Add(deleteRight);
-
-                WpfMenuItem assignRight = new WpfMenuItem
-                {
-                    Header = $"📌  Assign Fixtures — {rightLabel}"
-                };
-                assignRight.Click += (s, e) =>
-                    OnAssignFixtures(tag.Board, tag.Chassis,
-                        rightCircuit);
-                menu.Items.Add(assignRight);
-
-                if (rightCircuit.Fixtures.Count > 0)
-                {
-                    WpfMenuItem selectRight = new WpfMenuItem
-                    {
-                        Header = $"👁️  Select in Model — " +
-                            $"{rightLabel} " +
-                            $"({rightCircuit.Fixtures.Count})"
-                    };
-                    selectRight.Click += (s, e) =>
-                        OnSelectFixtures(tag.Board, tag.Chassis,
-                            rightCircuit);
-                    menu.Items.Add(selectRight);
-
-                    WpfMenuItem removeRight = new WpfMenuItem
-                    {
-                        Header = $"🔗  Pick Fixtures to Remove — " +
-                            $"{rightLabel}"
-                    };
-                    removeRight.Click += (s, e) =>
-                        OnRemoveFixtures(tag.Board, tag.Chassis,
-                            rightCircuit);
-                    menu.Items.Add(removeRight);
-                }
-            }
-            else if (!tag.RightConsumed)
-            {
-                WpfMenuItem assignRightSpare = new WpfMenuItem
-                {
-                    Header = $"📌  Assign Fixtures — " +
-                        $"{tag.Right.DisplayLabel} (spare)"
-                };
-                assignRightSpare.Click += (s, e) =>
-                    OnAssignFixturesToSpare(tag.Board, tag.Chassis,
-                        tag.Right);
-                menu.Items.Add(assignRightSpare);
-            }
-            else
-            {
-                WpfMenuItem rightInfo = new WpfMenuItem
-                {
-                    Header = $"➡  {tag.Right.DisplayLabel} " +
-                        $"(part of multi-pole)",
-                    IsEnabled = false
-                };
-                menu.Items.Add(rightInfo);
-            }
-
-            return menu;
-        }
-
-        private void OnAssignFixturesToSpare(
-    BoardData board, ChassisData chassis,
-    PoleAssignment pole)
-        {
-            PushUndoState();
-
-            CircuitData newCircuit = new CircuitData
-            {
-                CircuitGuid = Guid.NewGuid(),
-                DisplayLabel = pole.DisplayLabel,
-                CircuitNumber = pole.CircuitNumber,
-                Poles = 1
-            };
-
-            chassis.Circuits.Add(newCircuit);
-
-            OnAssignFixtures(board, chassis, newCircuit);
-        }
-
-        // ─── Delete Single Circuit ───────────────────────────
-
-        private void OnDeleteCircuit(
-            ChassisData chassis, CircuitData circuit)
-        {
-            int fixtureCount = circuit.Fixtures?.Count ?? 0;
-
-            if (fixtureCount > 0)
-            {
-                MessageBoxResult result = MessageBox.Show(
-                    $"Circuit {circuit.DisplayLabel} " +
-                    $"({circuit.Description}) has " +
-                    $"{fixtureCount} fixture(s) assigned.\n\n" +
-                    "Deleting this circuit will remove all " +
-                    "fixture assignments.\n\n" +
-                    "Would you like to assign these fixtures " +
-                    "to a different circuit first?",
-                    "Fixtures Assigned",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Warning);
-
-                if (result == MessageBoxResult.Cancel) return;
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    // TODO: circuit reassignment picker
-                    StatusLabel.Text =
-                        "Fixture reassignment not yet implemented. " +
-                        "Fixtures will be unassigned.";
-                }
-
-                // TODO: clear fixture ES data when implemented
-            }
-            else
-            {
-                MessageBoxResult confirm = MessageBox.Show(
-                    $"Delete circuit {circuit.DisplayLabel} " +
-                    $"({circuit.Description})?\n\n" +
-                    "This will clear all data and make it spare.",
-                    "Delete Circuit",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (confirm != MessageBoxResult.Yes) return;
-            }
-
-            // If multi-pole, also free consumed poles
-            if (circuit.Poles > 1)
-            {
-                List<PoleAssignment> assignments =
-                    CircuitLabelCalculator.Calculate(chassis);
-
-                PoleAssignment? startPole = assignments
-                    .FirstOrDefault(a =>
-                        a.DisplayLabel == circuit.DisplayLabel);
-
-                if (startPole != null)
-                {
-                    // Consumed poles are already just references
-                    // in the dictionary — removing the parent
-                    // circuit removes them automatically on refresh
-                }
-            }
-
-            PushUndoState();
-            chassis.Circuits.Remove(circuit);
-            SaveAndRefresh();
-        }
-
-        // ─── Clear All Circuits in Chassis ───────────────────
-
-        private void OnClearAllCircuits(ChassisData chassis)
-        {
-            if (chassis.Circuits.Count == 0)
-            {
-                StatusLabel.Text = "No circuits to clear.";
+                System.Diagnostics.Trace.TraceWarning("A circuit tree header has no item container.");
                 return;
             }
 
-            int totalCircuits = chassis.Circuits.Count;
-            int totalFixtures = chassis.Circuits
-                .Sum(c => c.Fixtures?.Count ?? 0);
-
-            string message = $"Clear all {totalCircuits} circuit(s) " +
-                $"from chassis '{chassis.Name}'?\n\n" +
-                "All descriptions, breaker sizes, and protection " +
-                "settings will be removed.";
-
-            if (totalFixtures > 0)
-            {
-                message += $"\n\n⚠ {totalFixtures} fixture(s) " +
-                    "across all circuits will be unassigned.";
-            }
-
-            MessageBoxResult result = MessageBox.Show(
-                message,
-                "Clear All Circuits",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (result != MessageBoxResult.Yes) return;
-
-            // TODO: clear fixture ES data when implemented
-
-            PushUndoState();
-            chassis.Circuits.Clear();
-            SaveAndRefresh();
-
-            StatusLabel.Text =
-                $"Cleared {totalCircuits} circuit(s) from " +
-                $"'{chassis.Name}'.";
-        }
-        // ─── Board Actions ───────────────────────────────────────
-
-        private void OnRenameBoard(BoardData board)
-        {
-            RenameDialog dialog = new RenameDialog(
-                "Rename Board", board.DisplayName);
-            dialog.ShowDialog();
-            if (!dialog.Confirmed) return;
-            PushUndoState();
-            board.DisplayName = dialog.NewName;
-            SaveAndRefresh();
-        }
-
-        private void OnDeleteBoard(BoardData board)
-        {
-            MessageBoxResult result = MessageBox.Show(
-                $"Delete board '{board.DisplayName}'?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
-            PushUndoState();
-            _boards.Remove(board);
-            SaveAndRefresh();
-        }
-
-        // ─── Chassis Actions ─────────────────────────────────────
-
-        private int CalculateSuggestedStart(BoardData board)
-        {
-            if (board.Chassis.Count == 0) return 1;
-            ChassisData last = board.Chassis[board.Chassis.Count - 1];
-            int phaseCount = last.PhaseLabels?.Count ?? 0;
-            if (phaseCount <= 0)
-                return last.StartingCircuit + last.MaxPoles;
-            return last.StartingCircuit
-                + (last.MaxPoles / phaseCount);
-        }
-
-        private void OnAddChassis(BoardData board)
-        {
-            int suggestedStart = CalculateSuggestedStart(board);
-            bool isThreePhase =
-                board.Supply == SupplyType.ThreePhase;
-            bool allowThreePhase =
-                board.Supply == SupplyType.ThreePhase;
-
-            ChassisConfigDialog dialog = new ChassisConfigDialog(
-                existing: null,
-                suggestedStart: suggestedStart,
-                isThreePhase: isThreePhase,
-                allowThreePhase: allowThreePhase);
-            dialog.ShowDialog();
-            if (!dialog.Confirmed || dialog.Result == null) return;
-            PushUndoState();
-            board.Chassis.Add(dialog.Result);
-            SaveAndRefresh();
-        }
-
-        private void OnEditChassis(
-            BoardData board, ChassisData chassis)
-        {
-            bool isThreePhase =
-                board.Supply == SupplyType.ThreePhase;
-            bool allowThreePhase =
-                board.Supply == SupplyType.ThreePhase;
-
-            ChassisConfigDialog dialog = new ChassisConfigDialog(
-                chassis, chassis.StartingCircuit, isThreePhase,
-                allowThreePhase);
-            dialog.ShowDialog();
-            if (!dialog.Confirmed || dialog.Result == null) return;
-            int index = board.Chassis.IndexOf(chassis);
-            PushUndoState();
-            if (index >= 0) board.Chassis[index] = dialog.Result;
-            SaveAndRefresh();
-        }
-
-        private void OnDeleteChassis(
-            BoardData board, ChassisData chassis)
-        {
-            MessageBoxResult result = MessageBox.Show(
-                $"Delete chassis '{chassis.Name}'?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
-            PushUndoState();
-            board.Chassis.Remove(chassis);
-            SaveAndRefresh();
-        }
-
-        // ─── Bulk Edit ───────────────────────────────────────────
-
-        private void OnBulkEditChassis(
-            BoardData board, ChassisData chassis)
-        {
-            BulkChassisEditDialog dialog =
-                new BulkChassisEditDialog(chassis.Name);
-            dialog.ShowDialog();
-            if (!dialog.Confirmed) return;
-
-            List<PoleAssignment> assignments =
-                CircuitLabelCalculator.Calculate(chassis);
-            Dictionary<string, ConsumedPoleInfo> consumedPoles =
-                BuildConsumedPoles(chassis, assignments);
-
-            foreach (PoleAssignment assignment in assignments)
-            {
-                if (consumedPoles.ContainsKey(
-                    assignment.DisplayLabel)) continue;
-                if (dialog.Scope == BulkApplyScope.LeftOnly
-                    && assignment.Side != Side.Left) continue;
-                if (dialog.Scope == BulkApplyScope.RightOnly
-                    && assignment.Side != Side.Right) continue;
-
-                CircuitData? existing = chassis.Circuits
-                    .FirstOrDefault(c =>
-                        c.DisplayLabel ==
-                        assignment.DisplayLabel);
-
-                if (dialog.Scope == BulkApplyScope.SpareOnly
-                    && existing != null
-                    && !string.IsNullOrEmpty(
-                        existing.Description)) continue;
-
-                if (existing == null)
-                {
-                    existing = new CircuitData
-                    {
-                        CircuitGuid = Guid.NewGuid(),
-                        DisplayLabel = assignment.DisplayLabel,
-                        CircuitNumber = assignment.CircuitNumber
-                    };
-                    chassis.Circuits.Add(existing);
-                }
-
-                if (dialog.ApplyBreaker)
-                    existing.BreakerSize = dialog.BreakerSize;
-                if (dialog.ApplyProtection)
-                    existing.ProtectionType =
-                        dialog.ProtectionType;
-                if (dialog.ApplyLeakage)
-                    existing.EarthLeakage = dialog.EarthLeakage;
-                if (dialog.ApplyDescription)
-                    existing.Description = dialog.Description;
-            }
-
-            // After: if (!dialog.Confirmed) return;
-            PushUndoState();
-
-            // ... existing bulk edit logic stays ...
-
-            SaveAndRefresh();
-        }
-
-        // ─── Fixture Actions ─────────────────────────────────
-
-        private void OnAssignFixtures(
-            BoardData board, ChassisData chassis,
-            CircuitData circuit)
-        {
-            PushUndoState();
-
-            Circuiting.Application.EventHandler.CurrentAction =
-                Commands.RevitAction.AssignFixtures;
-            Circuiting.Application.EventHandler.BoardsToSave =
-                _boards;
-            Circuiting.Application.EventHandler.AssignRequest =
-                new Commands.AssignFixturesRequest
-                {
-                    BoardGuid = board.BoardGuid,
-                    ChassisGuid = chassis.ChassisGuid,
-                    CircuitDisplayLabel = circuit.DisplayLabel
-                };
-            Circuiting.Application.RevitEvent.Raise();
-
-            StatusLabel.Text =
-                $"Pick fixtures for {circuit.DisplayLabel}...";
-        }
-
-        private void OnSelectFixtures(
-            BoardData board, ChassisData chassis,
-            CircuitData circuit)
-        {
-            Circuiting.Application.EventHandler.CurrentAction =
-                Commands.RevitAction.SelectFixtures;
-            Circuiting.Application.EventHandler.BoardsToSave =
-                _boards;
-            Circuiting.Application.EventHandler.AssignRequest =
-                new Commands.AssignFixturesRequest
-                {
-                    BoardGuid = board.BoardGuid,
-                    ChassisGuid = chassis.ChassisGuid,
-                    CircuitDisplayLabel = circuit.DisplayLabel
-                };
-            Circuiting.Application.RevitEvent.Raise();
-        }
-
-        private void OnRemoveFixtures(
-            BoardData board, ChassisData chassis,
-            CircuitData circuit)
-        {
-            int count = circuit.Fixtures.Count;
-
-            MessageBoxResult result = MessageBox.Show(
-                $"Remove all {count} fixture(s) from " +
-                $"{circuit.DisplayLabel}?\n\n" +
-                "The fixtures will remain in the model " +
-                "but will no longer be assigned to this circuit.",
-                "Remove Fixtures",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.Yes) return;
-
-            PushUndoState();
-
-            Circuiting.Application.EventHandler.CurrentAction =
-                Commands.RevitAction.RemoveFixtures;
-            Circuiting.Application.EventHandler.BoardsToSave =
-                _boards;
-            Circuiting.Application.EventHandler.AssignRequest =
-                new Commands.AssignFixturesRequest
-                {
-                    BoardGuid = board.BoardGuid,
-                    ChassisGuid = chassis.ChassisGuid,
-                    CircuitDisplayLabel = circuit.DisplayLabel
-                };
-            Circuiting.Application.RevitEvent.Raise();
+            var menu = header.ContextMenu;
+            header.ContextMenu = null;
+            item.ContextMenu = menu;
         }
 
         // ─── Toolbar Handlers ────────────────────────────────────
@@ -1417,9 +485,11 @@ namespace Circuiting.UI.DockablePanel
         private void AddBoardButton_Click(
             object sender, RoutedEventArgs e)
         {
+            ProjectData project = _project;
             AddBoardDialog dialog = new AddBoardDialog();
             dialog.ShowDialog();
             if (!dialog.Confirmed) return;
+            if (!IsCurrentProject(project)) return;
 
             BoardData board = new BoardData
             {
@@ -1467,46 +537,71 @@ namespace Circuiting.UI.DockablePanel
         private void RefreshButton_Click(
             object sender, RoutedEventArgs e)
         {
-            RefreshTree();
+            QueueRequest(RevitAction.Reload, ProjectDataSerializer.Serialize(_project));
+        }
+
+        private void ClearAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            ProjectData project = _project;
+            int fixtures = _boards.Sum(b => b.Chassis.Sum(c => c.Circuits.Sum(circuit => circuit.Fixtures.Count)));
+            if (MessageBox.Show(
+                $"Delete all {_boards.Count} board(s) and remove {fixtures} fixture assignment(s)?",
+                "Clear All Circuit Data", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            if (!IsCurrentProject(project)) return;
+            if (MessageBox.Show("Confirm that all circuit data should be cleared from this project.",
+                "Confirm Clear All", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            if (!IsCurrentProject(project)) return;
+
+            PushUndoState();
+            _boards.Clear();
+            SaveAndRefresh();
+        }
+
+        private void ValidateButton_Click(object sender, RoutedEventArgs e)
+        {
+            QueueRequest(RevitAction.Validate, ProjectDataSerializer.Serialize(_project));
+        }
+
+        private void ResolutionSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            ProjectData project = _project;
+            AutomaticResolutionRules rules = _project.Settings.AutoRules;
+            var dialog = new ResolutionSettingsDialog(rules);
+            if (dialog.ShowDialog() != true) return;
+            if (!IsCurrentProject(project)) return;
+            if (rules.OnFixtureCopied == dialog.CopiedAction &&
+                rules.OnFixtureDeleted == dialog.DeletedAction &&
+                rules.LogAutomaticActions == dialog.LogAutomaticActions)
+                return;
+
+            PushUndoState();
+            rules.OnFixtureCopied = dialog.CopiedAction;
+            rules.OnFixtureDeleted = dialog.DeletedAction;
+            rules.LogAutomaticActions = dialog.LogAutomaticActions;
+            SaveAndRefresh();
         }
 
         private void ExpandAllButton_Click(
             object sender, RoutedEventArgs e)
         {
-            foreach (object obj in BoardTree.Items)
-            {
-                if (obj is TreeViewItem item)
-                    ExpandAll(item);
-            }
+            SetAllExpanded(true);
         }
 
         private void CollapseAllButton_Click(
             object sender, RoutedEventArgs e)
         {
-            foreach (object obj in BoardTree.Items)
-            {
-                if (obj is TreeViewItem item)
-                    CollapseAll(item);
-            }
+            SetAllExpanded(false);
         }
 
-        private void ExpandAll(TreeViewItem item)
+        private void SetAllExpanded(bool expanded)
         {
-            item.IsExpanded = true;
-            foreach (object child in item.Items)
+            foreach (BoardTreeNode board in _treeNodes)
             {
-                if (child is TreeViewItem childItem)
-                    ExpandAll(childItem);
-            }
-        }
-
-        private void CollapseAll(TreeViewItem item)
-        {
-            item.IsExpanded = false;
-            foreach (object child in item.Items)
-            {
-                if (child is TreeViewItem childItem)
-                    CollapseAll(childItem);
+                board.IsExpanded = expanded;
+                foreach (ChassisTreeNode chassis in board.Chassis)
+                    chassis.IsExpanded = expanded;
             }
         }
 
@@ -1516,6 +611,7 @@ namespace Circuiting.UI.DockablePanel
             AutoModeLabel.Text = "MANUAL";
             AutoModeLabel.Foreground = new SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(255, 165, 0));
+            ChangeResolutionMode(ResolutionMode.Manual);
         }
 
         private void ModeToggle_Unchecked(
@@ -1524,6 +620,16 @@ namespace Circuiting.UI.DockablePanel
             AutoModeLabel.Text = "AUTO";
             AutoModeLabel.Foreground = new SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(78, 201, 78));
+            ChangeResolutionMode(ResolutionMode.Automatic);
+        }
+
+        private void ChangeResolutionMode(ResolutionMode mode)
+        {
+            if (_applyingSettings || !_dataLoaded || _project.Settings.ResolutionMode == mode) return;
+            PushUndoState();
+            _project.Settings.ResolutionMode = mode;
+            _project.Settings.ModeLastChanged = DateTime.UtcNow;
+            SaveAndRefresh();
         }
     }
 }

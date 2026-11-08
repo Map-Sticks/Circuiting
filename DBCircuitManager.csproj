@@ -32,4 +32,8 @@
         <Resource Include="Resources\Icons\RibbonIcon32.png" />
     </ItemGroup>
 
+    <ItemGroup>
+        <Compile Remove="tests\**\*.cs" />
+    </ItemGroup>
+
 </Project>

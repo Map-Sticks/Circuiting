@@ -1,110 +1,180 @@
-# Circuiting – DB Circuit Manager (Revit add-in)
+# Circuiting - DB Circuit Manager
 
-A Revit add-in (Nice3point.Revit.Sdk, WPF, C#) providing a dockable panel for
-managing **distribution boards → chassis → circuits → fixtures** for lighting /
-electrical fixtures, independent of Revit's native Electrical Circuits.
-All data is stored inside the `.rvt` file via Extensible Storage (JSON).
+Circuiting is a Revit add-in with a dockable WPF panel for managing
+**boards → chassis → circuits → fixtures**, independently of Revit's native
+electrical circuits. Circuit data is stored in the project using Revit
+Extensible Storage.
 
-- Namespace/root: `Circuiting`; assembly/addin: `DBCircuitManager`
-- Configurations: `Debug.R23 … Release.R27` (see *Issues* re: R23)
-- Entry point: `Application.cs` → ribbon panel **Circuit Manager** with an
-  **Open Circuits** button and a dockable pane "DB Circuit Manager" (tabbed behind Project Browser).
+## Supported builds
 
-## Project layout
+| Revit | Configurations | Target framework |
+|---|---|---|
+| 2023 | `Debug.R23`, `Release.R23` | .NET Framework 4.8 |
+| 2024 | `Debug.R24`, `Release.R24` | .NET Framework 4.8 |
+| 2025 | `Debug.R25`, `Release.R25` | .NET 8 for Windows |
+| 2026 | `Debug.R26`, `Release.R26` | .NET 8 for Windows |
+| 2027 | `Debug.R27`, `Release.R27` | .NET 10 for Windows |
+
+Build with the .NET 10 SDK and the .NET Framework 4.8 targeting pack. Revit API
+references are restored through the Nice3point NuGet packages; running the
+add-in requires the corresponding Revit installation on Windows.
+
+```sh
+# Select the configuration matching the Revit version.
+dotnet build DBCircuitManager.csproj -c Debug.R23 \
+  -p:EnableWindowsTargeting=true -p:DeployAddin=false -p:LaunchRevit=false
+
+dotnet test tests/Circuiting.Tests/Circuiting.Tests.csproj
+```
+
+The deployment and launch properties are disabled in these commands and in
+the [CI workflow](.github/workflows/ci.yml). CI builds every Debug and Release
+configuration and runs the cross-platform domain tests. Those tests use fake
+fixture stores; they do not run Revit, exercise its transactions, or verify WPF
+appearance. Build and restore intermediates are isolated by configuration so
+switching Revit targets does not reuse another version's assets; CI also
+checks switching between Revit 2023 and 2027.
+
+## Using the panel
+
+Open a project, then use **Circuit Manager → Open Circuits**. Add a board and
+edit its chassis and circuit rows using the tree's context menus or a row
+double-click. Multi-pole circuits occupy subsequent positions on the same
+side. A new or resized multi-pole circuit must start on the first phase and fit
+without overlapping another circuit. Convert multi-pole circuits to single
+poles before changing their chassis to single phase.
+Legacy chassis with one or two phase labels retain that pattern when edited;
+the chassis dialog offers an explicit option to remove it.
+
+- **Assign Fixtures** highlights eligible lighting fixtures, electrical
+  fixtures, and electrical equipment in the active model view. Select
+  elements and click **Finish**; Esc cancels the selection. Existing
+  assignments can be moved or skipped. Fixtures with orphaned or conflicting
+  assignment data must be reconciled with **Validate Model** first.
+- **Select in Model** selects existing circuit fixtures. **Pick Fixtures to
+  Remove** removes only the elements selected in that pick session.
+- Deleting a circuit can unassign its fixtures or move them to another
+  existing circuit. Deleting a chassis or board, clearing a chassis, and
+  **Clear All** unassign their referenced fixtures. **Clear All** requires two
+  confirmations.
+- **Validate Model** previews fixture repairs before applying them.
+  **Resolution Rules** configures copied- and deleted-fixture handling.
+  The AUTO/MANUAL toggle controls automatic reconciliation.
+- Panel Undo/Redo stores up to 50 project snapshots per document. Changes are
+  saved as Revit transactions, including corresponding fixture assignments.
+  Cancelled picks do not create an undo step.
+
+The panel is disabled while a Revit request is pending. A request is tied to
+its originating document and expected project snapshot; a document switch,
+external change, or failed transaction is reported instead of silently
+overwriting newer data.
+
+## Identity, storage, and migration
+
+Circuit GUIDs identify circuits. `PoleIndex` identifies their physical position
+within a chassis; display labels and numbers are recomputed from that layout
+and need not be unique. Changing a prefix, phase sequence, start number, or
+chassis layout updates fixture `CircuitReference` values in the same
+transaction as the project data.
+
+| Extensible Storage schema | Location | Use |
+|---|---|---|
+| `DBCircuitManager_Project` | `ProjectInformation` | Versioned JSON containing settings and the complete board tree; source of truth |
+| `DBCircuitManager_Fixture` | Each assigned fixture | Fixture, board, chassis and circuit GUIDs, plus the display reference |
+| `DBCircuitManager_Board` | Defined for panel elements | Reserved; not currently used by the panel |
+
+The existing schema GUIDs are unchanged. Fixture `UniqueId` is used when
+available. A legacy numeric element ID is used only when its fixture entity
+confirms the stored fixture GUID; ambiguous or conflicting assignments are not
+guessed.
+
+Legacy project data stored as a JSON board array is migrated in memory to
+schema version 1. Its circuit labels, and circuit numbers where necessary,
+must identify unique pole positions. Ambiguous layouts, invalid JSON, duplicate
+identities, and unsupported schema versions are reported and are not
+overwritten. Migration is persisted on a subsequent successful save.
+There is currently no repair interface for an ambiguous legacy layout.
+
+**Back up the model before upgrading or migrating.** Older versions of this
+add-in may not understand the versioned JSON format; retain the backup and
+previous add-in if rollback is needed. Errors are shown to the user and
+written to `System.Diagnostics.Trace`; the add-in does not configure a
+persistent log file.
+
+## Reconciliation and undo
+
+In AUTO mode, after a committed transaction in the currently tracked document,
+the add-in queues a separate Revit transaction to process recognizable copied
+fixtures and known deleted fixtures. Copies can be cleared or assigned to the
+same circuit with a new fixture GUID; optional notifications and trace logging
+are available. Automatic cleanup is deliberately limited to added copies whose
+stored GUIDs match their source and deleted fixtures whose stored unique and
+numeric IDs can be verified. Legacy, orphaned, conflicting, or otherwise
+ambiguous cases require explicit review.
+
+**Validate Model** scans eligible fixture categories, previews missing records,
+orphaned or copied assignments, mismatched fixture entities, and legacy ID
+updates, then applies the confirmed repair using project JSON as the
+authoritative source. Invalid fixture metadata or ambiguous legacy identity
+can block validation and requires manual recovery. Validation also applies the
+configured copied-fixture rule in MANUAL mode.
+
+Automatic repairs and validation are separate Revit transactions and clear
+panel history when they change data. Use **Revit Undo** to reverse them.
+Native Revit Undo/Redo reloads the project state but does not automatically
+replay copy/delete reconciliation; run **Validate Model** when needed. A
+missing referenced fixture is reported rather than silently reassigned.
+
+Fixture highlighting uses a rolled-back transaction group so pre-existing view
+overrides can be restored. Assigning requires a view that supports element
+iteration and graphics overrides. Verify picking, rollback, and failure
+handling in the actual Revit versions used by the project.
+
+## Project structure
 
 | Path | Purpose |
 |---|---|
-| `Application.cs` | Startup: creates `RevitEventHandler` + `ExternalEvent`, ribbon button, registers dockable pane |
-| `Commands/StartupCommand.cs` | Ribbon command: loads boards from the model into the pane and shows it. **Shift+click** opens a hidden "Clear ES Data" tool (double confirmation, wipes all data) |
-| `Commands/RevitEventHandler.cs` | `IExternalEventHandler` – all Revit API work (save, clear, assign/select/remove fixtures) |
-| `Commands/FixtureSelectionFilter.cs` | Pick filter: Lighting Fixtures, Electrical Fixtures, Electrical Equipment |
-| `Commands/CircuitFixtureFilter.cs` | Pick filter restricted to fixtures already in a given circuit |
-| `Models/` | `BoardData`, `ChassisData`, `CircuitData`, `CircuitedFixture`, `CircuitOptions`, `ProjectSettings` |
-| `Services/CircuitLabelCalculator.cs` | Generates pole layout and display labels for a chassis |
-| `Storage/ESSchema.cs`, `BoardRepository.cs` | Extensible Storage schemas + JSON (de)serialisation |
-| `UI/DockablePanel/CircuitManagerPane.xaml(.cs)` | Main panel: tree view, toolbar, context menus, undo/redo |
-| `UI/Dialogs/*` | Add board, chassis config, bulk chassis edit, circuit row edit, rename |
-| `ViewModels/`, `Views/` | Empty template scaffolding (unused) |
+| `Application.cs`, `Commands/` | Ribbon, document events, queued external Revit requests |
+| `Models/`, `Services/` | Project models, layout/identity rules, fixture synchronization and validation |
+| `Storage/` | Extensible Storage schemas, versioned JSON, Revit fixture adapter |
+| `ViewModels/` | Tree projection, commands, field options, and per-document history |
+| `UI/DockablePanel/`, `UI/Dialogs/` | XAML views, dialog handling, and panel action coordination |
+| `tests/Circuiting.Tests/` | Domain and view-model regression tests |
 
-## Data model
+## Limitations and future work
 
-```
-BoardData      (Guid, DisplayName, Supply = ThreePhase | SinglePhase)
- └ ChassisData (Guid, Name, MaxPoles, StartingCircuit, Prefix, Separator,
-                ShowPhaseLabel, ContinuePhaseFromPrevious, PhaseLabels[])
-    └ CircuitData (Guid, DisplayLabel, CircuitNumber, Description,
-                   BreakerSize, ProtectionType, EarthLeakage, Poles 1–3)
-       └ CircuitedFixture (Guid, RevitElementId, FamilyName, RoomName)
-```
+Boards are logical project records, not linked to physical panel elements.
+Consequently copied/deleted **physical boards** cannot yet be identified or
+resolved automatically; the board-level schema and the existing
+`CopiedBoardAction` setting are not used. No physical-board association is
+inferred from fixture data.
 
-Dropdown options (`CircuitOptions`): breakers 6–63 A; protection MCB/RCD/RCBO;
-earth leakage 10/30/100/300 mA.
+Unresolved work outside the maintenance scope includes load and phase
+balancing, schedule or CSV export/import, parameter/tag write-back, board
+duplication, native electrical-system integration, localization, and a
+persistent logging sink. The circuit options remain IEC-oriented.
 
-### Storage (Extensible Storage, public read/write, GUIDs must never change)
+## Manual Revit validation checklist
 
-| Schema | Stored on | Content |
-|---|---|---|
-| `DBCircuitManager_Project` | `ProjectInformation` | `ProjectDataJson` – the full board/chassis/circuit/fixture tree (**the real source of truth**) |
-| `DBCircuitManager_Board` | Panel element | `BoardDataJson` – defined, helpers exist, **not used yet** |
-| `DBCircuitManager_Fixture` | Each circuited fixture | Fixture/Board/Chassis/Circuit GUIDs + `CircuitReference` label |
+Run on a disposable copy of a model in each supported Revit version:
 
-## Current functions
-
-### Boards
-- **Add Board** (toolbar): name + single/three phase. Creates a default 24-pole chassis "Main" (phases R/W/B for 3-phase).
-- Rename / Delete board (context menu).
-
-### Chassis
-- Add / Edit chassis: name, pole count, starting circuit number, prefix, separator, phase-label pattern, show-phase toggle, with live label preview.
-- Suggested starting number calculated from existing chassis in the board.
-- **Bulk Edit Circuits**, **Clear All Circuits**, Delete chassis.
-
-### Circuit rows (two poles per row: left odd / right even)
-- Labels generated by `CircuitLabelCalculator`: per-phase counters, e.g. `R1 W3 B5 / R2 W4 B6`, optional prefix/separator.
-- Double-click a row → **Edit Circuit Row** (description, breaker, protection, earth leakage, poles). Multi-pole circuits (1–3) consume following poles; consumed slots display as references to the parent.
-- Context menu per side: Delete circuit, Assign Fixtures, Select in Model, Pick Fixtures to Remove (consumed poles show a disabled info item).
-
-### Fixtures (Revit interaction through ExternalEvent)
-- **Assign Fixtures**: halftones all lighting/electrical fixtures/equipment in the active view, highlights existing members green, multi-pick until Esc. Fixtures already circuited prompt *Move / Skip*. Writes fixture ES entity + project JSON.
-- **Select in Model**: selects and zooms to a circuit's fixtures.
-- **Remove Fixtures**: pick fixtures from the circuit to unassign (clears fixture ES data).
-
-### Panel
-- Tree with expand/collapse-all, state restored after refresh, status bar.
-- Undo/Redo (Ctrl+Z / Ctrl+Y, 50-level JSON snapshot stack), Refresh.
-- Auto-save: every edit raises an external event that writes the JSON to `ProjectInformation` in a transaction.
-
-## Known issues / risks
-
-**Correctness**
-1. **Circuits keyed by `DisplayLabel`** (`FindTargetCircuit`, delete, pole lookup). Editing chassis prefix/start/phases/pole count changes labels, orphaning circuits and leaving stale `CircuitReference` values on fixtures. Use `CircuitGuid`/`CircuitNumber` as identity.
-2. **Fixture ES data not cleaned up** on Delete Circuit / Clear All Circuits / Delete Chassis / Delete Board (three `TODO`s in `CircuitManagerPane.xaml.cs`); fixtures stay flagged as circuited but are in no circuit. The "reassign fixtures first" option is unimplemented (just shows a message).
-3. **Undo/Redo covers only the JSON tree**, not fixture ES entities or Revit view overrides → panel and model diverge after undo. Assign pushes an undo snapshot even if the user cancels.
-4. **"Remove all fixtures" prompt mismatch**: `OnRemoveFixtures` confirms removing *all* N fixtures, but the handler runs a pick-mode removal.
-5. **Shared mutable event-handler state** (`CurrentAction`, `BoardsToSave`, `AssignRequest`): rapid actions before Revit processes the previous `Raise()` can overwrite each other (ExternalEvent coalesces). `LastActionSucceeded`/`LastMessage` are never reported back on failure except via status.
-6. **Revit API usage**: `TaskDialog` shown inside an open transaction while assigning; view overrides applied to *every* fixture in view and only restored by resetting to empty (destroys any user overrides); overrides aren't cleared on exceptions other than cancel; assign runs in whatever view is active (3D/sections OK, but schedules/sheets will throw).
-7. **Unhandled data loss paths**: `LoadAllBoards` swallows all exceptions and returns an empty list – the next auto-save then overwrites real data with `[]`. JSON has no schema version. Hidden Shift+click wipe is easy to trigger.
-8. **Copy/paste, deleted fixtures and deleted elements are not handled**: `ProjectSettings` (auto/manual resolution rules for copied/deleted fixtures and boards) is defined but never used; no `DocumentChanged` handling. Copied fixtures carry ES data (duplicate GUIDs / circuit references).
-9. **Stale element IDs**: `RevitElementId` only; no `UniqueId`, so workshared/detached/linked models can break references. `ElementId.Value` (long) exists only in Revit 2024+ but configurations include **R23**.
-10. Single phase-label cleanup hack in `LoadAllBoards` ("duplicated phase labels from previous bug") and a redundant double-initialisation loop in `CircuitLabelCalculator`; `ContinuePhaseFromPrevious` is stored but not implemented in calculation.
-11. `Undo`/`Redo`/auto-save do not check the document changed (pane holds one `_boards` list for whatever doc was opened last; no `DocumentOpened/Closing` handling → multi-document sessions will mix data).
-12. **Bulk Edit applies changes before `PushUndoState()`** (leftover pasted comments mark the spot), so Undo cannot revert a bulk edit.
-
-**Quality / tooling**
-- No tests, CI, README (until now), or licence. `CircuitLabelCalculator` and `BoardRepository` are easily unit-testable.
-- `CircuitManagerPane.xaml.cs` is ~1,500 lines of code-behind building UI in code; the MVVM scaffolding (`CommunityToolkit.Mvvm`, `ViewModels/`, `Views/`) is unused.
-- Dialogs are built programmatically (no XAML) and hardcoded styling/emoji; `SetApplication` is never called; Board-level ES schema unused.
-- Naming inconsistency: project `DBCircuitManager` vs namespace `Circuiting`; add-in `VendorId` "Development", no icons wiring on ribbon button.
-- No error logging; `catch {}` blocks hide failures. No localisation. Only North-American-incompatible (IEC-style MCB/RCD/RCBO) options.
-
-## Suggested next steps (priority order)
-
-1. **Stabilise identity & integrity**: key by `CircuitGuid`; make label a computed display value; update fixture `CircuitReference` when labels change; add JSON schema version and migration; don't overwrite on load failure (surface error, log).
-2. **Finish fixture lifecycle**: clear fixture ES data on every delete/clear path; implement reassign-to-circuit picker; fix Remove Fixtures confirmation/behaviour; add "validate model" command that reconciles ES vs JSON (orphans, missing elements, duplicates).
-3. **Document handling**: `DocumentChanged`/`DocumentOpened`/`Closing` handlers; implement `ProjectSettings` rules for copied/deleted fixtures and boards; use `UniqueId`; per-document pane state.
-4. **Harden the Revit interaction layer**: request queue per action instead of shared fields; no dialogs inside transactions; temporary view overrides via `TemporaryViewMode`/restore previous overrides; result reporting back to the UI.
-5. **Undo/redo** that includes fixture assignments (store changes as commands) or integrate with Revit transactions.
-6. **Build targets**: confirm R23 compiles (`ElementId.Value`) or drop it; add CI build matrix.
-7. **Refactor UI**: move tree construction/commands into view models (MVVM already referenced), split the 1.5k-line code-behind, convert dialogs to XAML.
-8. **Tests** for `CircuitLabelCalculator`, repository serialisation, multi-pole consumption.
-9. **Feature roadmap**: load/phase balancing calculations (needs per-fixture wattage), schedule/panel-schedule export (Revit schedules or Excel/PDF), tag/parameter write-back of circuit reference to a shared parameter on fixtures, bulk import/export (CSV), board copy/duplicate, link to native Revit electrical systems, use of the board-level schema on panel family instances.
+1. Back up the model. Open legacy and current data, verify migration and
+   reopening, and confirm invalid or ambiguous data is reported without being
+   replaced.
+2. Exercise board/chassis/circuit dialogs, multi-pole positions, tree context
+   menus, keyboard navigation, expansion state, and bulk edit/undo.
+3. Assign fixtures, edit labels and phase continuation, then inspect project
+   and fixture Extensible Storage with a Revit inspection tool to confirm
+   identities and references stay consistent.
+4. Test circuit, chassis, board and Clear All deletion; reassign fixtures;
+   undo and redo each operation. Check both JSON and fixture entities.
+5. Test Finish and Esc during selection, pre-existing graphics overrides,
+   exceptions/cancellation, and unsupported views. Confirm original overrides
+   are restored and no transaction is left open.
+6. Copy and delete fixtures under each resolution rule and in MANUAL mode;
+   preview validation, cancel it, apply it, and use Revit Undo/Redo. Include
+   orphaned, missing, legacy, and conflicting assignments.
+7. Switch, close, and reopen multiple projects, including while a request is
+   pending. Confirm no request or history is applied to the wrong document.
+8. Test read-only/workshared or otherwise failing writes and confirm errors
+   are visible and model data is not partially changed.

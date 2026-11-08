@@ -1,0 +1,61 @@
+<Window x:Class="Circuiting.UI.Dialogs.ChassisConfigDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="420" Height="560" WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize" Background="#1E1E1E">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Chassis Name:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <TextBox x:Name="NameBox" FontSize="13" Padding="6,4" Margin="0,0,0,12"/>
+            <TextBlock Text="Chassis Type:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="ThreePhaseRadio" Content="3 Phase" Foreground="White" FontSize="13"
+                             Margin="0,0,16,0" Checked="ChassisType_Checked"/>
+                <RadioButton x:Name="SinglePhaseRadio" Content="Single Phase" Foreground="White" FontSize="13"
+                             Checked="ChassisType_Checked"/>
+            </StackPanel>
+            <CheckBox x:Name="RemoveLegacyPhasesCheck" Content="Remove legacy phase labels (changes circuit labels)"
+                      Foreground="White" FontSize="12" Margin="0,0,0,12" Visibility="Collapsed"
+                      Checked="PreviewChanged" Unchecked="PreviewChanged"/>
+            <TextBlock Text="Max Poles:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <ComboBox x:Name="PolesCombo" FontSize="13" Padding="6,4" Margin="0,0,0,12"
+                      SelectionChanged="PreviewSelectionChanged"/>
+            <TextBlock Text="Starting Circuit Number:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <TextBox x:Name="StartCircuitBox" FontSize="13" Padding="6,4" Margin="0,0,0,12"
+                     TextChanged="PreviewTextChanged"/>
+            <TextBlock Text="Circuit Prefix (optional):" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <TextBox x:Name="PrefixBox" FontSize="13" Padding="6,4" Margin="0,0,0,12"
+                     TextChanged="PreviewTextChanged"/>
+            <TextBlock Text="Separator:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <WrapPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="SepNone" Content="None" Foreground="White" FontSize="13"
+                             Margin="0,0,16,0" Checked="PreviewChanged"/>
+                <RadioButton x:Name="SepDash" Content="Dash ( - )" Foreground="White" FontSize="13"
+                             Margin="0,0,16,0" Checked="PreviewChanged"/>
+                <RadioButton x:Name="SepDot" Content="Dot ( . )" Foreground="White" FontSize="13"
+                             Checked="PreviewChanged"/>
+                <RadioButton x:Name="SepCustom" Foreground="White" FontSize="13" Margin="16,0,0,0"
+                             Visibility="Collapsed" Checked="PreviewChanged"/>
+            </WrapPanel>
+            <StackPanel x:Name="PhaseConfigPanel">
+                <CheckBox x:Name="ShowPhaseCheck" Content="Show Phase Labels" Foreground="White" FontSize="13"
+                          Margin="0,0,0,8" Checked="PreviewChanged" Unchecked="PreviewChanged"/>
+                <CheckBox x:Name="ContinuePhaseCheck" Content="Continue phase sequence from previous chassis"
+                          Foreground="White" FontSize="13" Margin="0,0,0,8"
+                          Checked="PreviewChanged" Unchecked="PreviewChanged"/>
+                <TextBlock Text="Phase Labels (comma separated):" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+                <TextBox x:Name="PhaseLabelsBox" FontSize="13" Padding="6,4" Margin="0,0,0,16"
+                         TextChanged="PreviewTextChanged"/>
+            </StackPanel>
+            <TextBlock Text="Preview:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
+            <Border Background="#141414" Padding="10" Margin="0,0,0,16" CornerRadius="4">
+                <TextBlock x:Name="PreviewBlock" Foreground="White" FontFamily="Consolas" FontSize="12"/>
+            </Border>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Width="80" Padding="0,4" Margin="0,0,8,0" IsCancel="True"/>
+                <Button x:Name="ConfirmButton" Width="80" Padding="0,4" Background="#0078D4"
+                        Foreground="White" BorderThickness="0" IsDefault="True" Click="Confirm_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

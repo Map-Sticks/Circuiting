@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Domain tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test tests/Circuiting.Tests/Circuiting.Tests.csproj --configuration Release --verbosity minimal
+
+  build:
+    name: Revit ${{ matrix.revit }} ${{ matrix.configuration }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        revit: [23, 24, 25, 26, 27]
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build without deployment or launch
+        run: >-
+          dotnet build DBCircuitManager.csproj
+          --configuration "${{ matrix.configuration }}.R${{ matrix.revit }}"
+          -p:EnableWindowsTargeting=true
+          -p:DeployAddin=false
+          -p:LaunchRevit=false
+          --verbosity minimal
+      - name: Verify restore isolation across Revit versions
+        if: matrix.revit == 23 && matrix.configuration == 'Debug'
+        shell: pwsh
+        run: |
+          dotnet build DBCircuitManager.csproj --configuration Debug.R27 -p:EnableWindowsTargeting=true -p:DeployAddin=false -p:LaunchRevit=false --verbosity minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $r23 = Get-Content -Raw obj/Debug.R23/project.assets.json | ConvertFrom-Json
+          $r27 = Get-Content -Raw obj/Debug.R27/project.assets.json | ConvertFrom-Json
+          if (-not $r23.targets.PSObject.Properties['net48'] -or
+              -not $r27.targets.PSObject.Properties['net10.0-windows7.0']) {
+            throw 'Revit configurations did not retain their own restore targets.'
+          }
+          dotnet build DBCircuitManager.csproj --configuration Debug.R23 --no-restore -p:EnableWindowsTargeting=true -p:DeployAddin=false -p:LaunchRevit=false --verbosity minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
