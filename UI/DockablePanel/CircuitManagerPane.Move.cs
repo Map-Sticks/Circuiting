@@ -16,15 +16,14 @@ namespace Circuiting.UI.DockablePanel
             public BoardData Board { get; set; } = null!;
             public ChassisData Chassis { get; set; } = null!;
             public CircuitData Circuit { get; set; } = null!;
+            /// <summary>All selected circuits when dragging a multi-selection; null for a single circuit.</summary>
+            public List<CircuitRef>? Bulk { get; set; }
         }
 
         private sealed class FixtureDrag
         {
             public ProjectData Project { get; set; } = null!;
-            public BoardData Board { get; set; } = null!;
-            public ChassisData Chassis { get; set; } = null!;
-            public CircuitData Circuit { get; set; } = null!;
-            public CircuitedFixture Fixture { get; set; } = null!;
+            public List<FixtureRef> Fixtures { get; set; } = null!;
         }
 
         private FixtureDrag? _fixtureDrag;
@@ -82,11 +81,20 @@ namespace Circuiting.UI.DockablePanel
         private void OnMoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture)
         {
             if (!IsCurrentTarget(board, chassis, circuit) || !circuit.Fixtures.Contains(fixture)) return;
+            OnMoveFixtures(new List<FixtureRef>
+            {
+                new FixtureRef { Board = board, Chassis = chassis, Circuit = circuit, Fixture = fixture }
+            });
+        }
+
+        private void OnMoveFixtures(List<FixtureRef> fixtures)
+        {
+            if (fixtures.Count == 0 || !fixtures.All(IsCurrentFixture)) return;
             ProjectData project = _project;
             CircuitMovePicker picker;
             try
             {
-                picker = new CircuitMovePicker(_boards, board, chassis, circuit, fixture);
+                picker = new CircuitMovePicker(_boards, fixtures);
             }
             catch (System.IO.InvalidDataException ex)
             {
@@ -97,33 +105,37 @@ namespace Circuiting.UI.DockablePanel
             if (dialog.ShowDialog() != true || dialog.Destination == null) return;
             if (!IsCurrentProject(project)) return;
             MovePositionOption destination = dialog.Destination;
-            MoveFixture(board, chassis, circuit, fixture, destination.Board, destination.Chassis,
-                destination.Position.PoleIndex);
+            MoveFixtures(fixtures, destination.Board, destination.Chassis, destination.Position.PoleIndex);
         }
 
-        private bool MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture,
-            BoardData targetBoard, ChassisData targetChassis, int poleIndex)
+        private bool IsCurrentFixture(FixtureRef fixture) =>
+            IsCurrentTarget(fixture.Board, fixture.Chassis, fixture.Circuit) &&
+            fixture.Circuit.Fixtures.Contains(fixture.Fixture);
+
+        private bool MoveFixtures(List<FixtureRef> fixtures, BoardData targetBoard, ChassisData targetChassis,
+            int poleIndex)
         {
-            if (!IsCurrentTarget(board, chassis, circuit) || !IsCurrentTarget(targetBoard, targetChassis)) return false;
-            if (!circuit.Fixtures.Contains(fixture))
+            if (!IsCurrentTarget(targetBoard, targetChassis)) return false;
+            if (!fixtures.All(IsCurrentFixture))
             {
-                MessageBox.Show("The element is no longer assigned to this circuit.", "Move Element",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("An element is no longer assigned to its circuit. Refresh and try again.",
+                    "Move Element", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
             FixtureMoveTarget target;
             try
             {
-                target = FixtureMover.GetTarget(targetBoard, targetChassis, circuit, poleIndex);
+                target = FixtureMover.GetTarget(targetBoard, targetChassis, null, poleIndex);
             }
             catch (System.IO.InvalidDataException ex)
             {
                 MessageBox.Show(ex.Message, "Cannot Move Element", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
-            if (!target.IsAvailable)
+            if (fixtures.All(f => ReferenceEquals(f.Circuit, target.Circuit)))
             {
-                StatusLabel.Text = "The element is already on that circuit.";
+                StatusLabel.Text = fixtures.Count == 1
+                    ? "The element is already on that circuit." : "The elements are already on that circuit.";
                 return false;
             }
 
@@ -131,7 +143,9 @@ namespace Circuiting.UI.DockablePanel
             CircuitData? details = null;
             if (target.CreatesCircuit)
             {
-                string name = string.IsNullOrWhiteSpace(fixture.FamilyName) ? "The element" : fixture.FamilyName;
+                string name = fixtures.Count > 1 ? $"{fixtures.Count} elements"
+                    : string.IsNullOrWhiteSpace(fixtures[0].Fixture.FamilyName) ? "The element"
+                    : fixtures[0].Fixture.FamilyName;
                 string intro = target.Kind == FixtureMoveKind.FillSpare
                     ? $"{name} will be moved onto this spare, making it a circuit. Its saved details are shown; amend them if needed."
                     : $"{name} will be moved onto this space, creating a new circuit. Enter its details (all optional).";
@@ -143,8 +157,7 @@ namespace Circuiting.UI.DockablePanel
             }
 
             PushUndoState();
-            CircuitData destination = FixtureMover.Move(chassis, circuit, fixture, targetBoard, targetChassis,
-                poleIndex, details);
+            CircuitData destination = FixtureMover.MoveMany(fixtures, targetBoard, targetChassis, poleIndex, details);
             SaveAndRefresh(new[] { targetBoard.BoardGuid, targetChassis.ChassisGuid, destination.CircuitGuid });
             return true;
         }
@@ -159,12 +172,15 @@ namespace Circuiting.UI.DockablePanel
             e.Handled = true;
             if (!IsCurrentTarget(node.Board, node.Chassis, node.Circuit) ||
                 !node.Circuit.Fixtures.Contains(node.Fixture)) return;
+            List<FixtureRef> fixtures = Selection.Contains(TreeSelectionKind.Elements, node.Fixture.FixtureGuid) &&
+                Selection.Count > 1
+                ? BulkCircuitOperations.ResolveFixtures(_boards, Selection.Keys.ToList())
+                : new List<FixtureRef>
+                {
+                    new FixtureRef { Board = node.Board, Chassis = node.Chassis, Circuit = node.Circuit, Fixture = node.Fixture }
+                };
             _dragStart = e.GetPosition(this);
-            _fixtureDrag = new FixtureDrag
-            {
-                Project = _project, Board = node.Board, Chassis = node.Chassis, Circuit = node.Circuit,
-                Fixture = node.Fixture
-            };
+            _fixtureDrag = new FixtureDrag { Project = _project, Fixtures = fixtures };
         }
 
         private void FixtureRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -206,24 +222,26 @@ namespace Circuiting.UI.DockablePanel
             out bool allowed)
         {
             allowed = false;
-            if (!IsCurrentTarget(drag.Board, drag.Chassis, drag.Circuit) || !IsCurrentTarget(board, chassis)) return null;
+            if (!drag.Fixtures.All(IsCurrentFixture) || !IsCurrentTarget(board, chassis)) return null;
             FixtureMoveTarget target;
             try
             {
-                target = FixtureMover.GetTarget(board, chassis, drag.Circuit, poleIndex);
+                target = FixtureMover.GetTarget(board, chassis, null, poleIndex);
             }
             catch (System.IO.InvalidDataException ex)
             {
                 return ex.Message;
             }
-            if (!target.IsAvailable) return "The element is already on this circuit.";
+            string what = drag.Fixtures.Count == 1 ? "element" : $"{drag.Fixtures.Count} elements";
+            if (drag.Fixtures.All(f => ReferenceEquals(f.Circuit, target.Circuit)))
+                return $"The {what} {(drag.Fixtures.Count == 1 ? "is" : "are")} already on this circuit.";
             allowed = true;
             string where = $"{board.DisplayName} / {chassis.Name} / {target.Position.DisplayLabel}";
             return target.Kind switch
             {
-                FixtureMoveKind.NewCircuit => $"Move element to {where} — creates a new circuit",
-                FixtureMoveKind.FillSpare => $"Move element to {where} — spare becomes a circuit",
-                _ => $"Move element to {target.Circuit?.DisplayLabel ?? where} ({board.DisplayName} / {chassis.Name})"
+                FixtureMoveKind.NewCircuit => $"Move {what} to {where} — creates a new circuit",
+                FixtureMoveKind.FillSpare => $"Move {what} to {where} — spare becomes a circuit",
+                _ => $"Move {what} to {target.Circuit?.DisplayLabel ?? where} ({board.DisplayName} / {chassis.Name})"
             };
         }
 
@@ -256,8 +274,7 @@ namespace Circuiting.UI.DockablePanel
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (!IsCurrentProject(drag.Project)) return;
-                MoveFixture(drag.Board, drag.Chassis, drag.Circuit, drag.Fixture,
-                    target.Value.Board, target.Value.Chassis, target.Value.PoleIndex);
+                MoveFixtures(drag.Fixtures, target.Value.Board, target.Value.Chassis, target.Value.PoleIndex);
             }));
             return true;
         }
@@ -302,7 +319,9 @@ namespace Circuiting.UI.DockablePanel
             _dragStart = e.GetPosition(this);
             _circuitDrag = new CircuitDrag
             {
-                Project = _project, Board = row.Board, Chassis = row.Chassis, Circuit = circuit
+                Project = _project, Board = row.Board, Chassis = row.Chassis, Circuit = circuit,
+                Bulk = Selection.Contains(TreeSelectionKind.Circuits, circuit.CircuitGuid) && Selection.Count > 1
+                    ? BulkCircuitOperations.ResolveCircuits(_boards, Selection.Keys.ToList()) : null
             };
         }
 
@@ -340,6 +359,16 @@ namespace Circuiting.UI.DockablePanel
                 sender is not Grid grid || grid.DataContext is not CircuitRowViewModel row) return;
             if (!_dataLoaded || _requestPending || !ReferenceEquals(drag.Project, _project)) return;
             PoleAssignment position = PositionAt(grid, row, e.GetPosition(grid));
+            if (drag.Bulk != null)
+            {
+                BulkMovePlan plan = BulkCircuitOperations.PlanMove(drag.Bulk, row.Board, row.Chassis, position.PoleIndex);
+                StatusLabel.Text = plan.Error ?? (plan.IsNoOp ? "The selected circuits are already here."
+                    : $"Move {drag.Bulk.Count} circuits to {row.Board.DisplayName} / {row.Chassis.Name} / " +
+                      $"{plan.Placements[0].Position.DisplayLabel}…{plan.Placements[plan.Placements.Count - 1].Position.DisplayLabel}" +
+                      (plan.ReplacedSpares.Any(CircuitLayout.HasDetails) ? " — replaces spares" : string.Empty));
+                if (plan.IsValid && !plan.IsNoOp) e.Effects = DragDropEffects.Move;
+                return;
+            }
             string? error = CircuitLayout.GetMoveError(drag.Chassis, drag.Circuit,
                 row.Board, row.Chassis, position.PoleIndex);
             bool replacesSpare = error == null && CircuitLayout.GetSparesReplacedByMove(drag.Circuit, row.Chassis,
@@ -361,6 +390,16 @@ namespace Circuiting.UI.DockablePanel
             PoleAssignment position = PositionAt(grid, row, e.GetPosition(grid));
             BoardData targetBoard = row.Board;
             ChassisData targetChassis = row.Chassis;
+            if (drag.Bulk != null)
+            {
+                List<CircuitRef> circuits = drag.Bulk;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (IsCurrentProject(drag.Project))
+                        MoveCircuits(circuits, targetBoard, targetChassis, position.PoleIndex);
+                }));
+                return;
+            }
             if (CircuitLayout.GetMoveError(drag.Chassis, drag.Circuit, targetBoard, targetChassis,
                     position.PoleIndex) == null)
                 e.Effects = DragDropEffects.Move;

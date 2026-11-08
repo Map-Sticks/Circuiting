@@ -152,6 +152,7 @@ public class CircuitTreeProjectionTests
             bool zoom) => Record(zoom ? "zoom-fixture" : "select-fixture", fixture);
         public void MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture) =>
             Record("move-fixture", fixture);
+        public TreeSelection Selection { get; } = new(() => { }, () => { });
         public Dictionary<Guid, FixtureDetails> Details { get; } = new();
         public FixtureDetails? GetFixtureDetails(CircuitedFixture fixture) =>
             Details.TryGetValue(fixture.FixtureGuid, out FixtureDetails? details) ? details : null;

@@ -34,7 +34,7 @@ namespace Circuiting.Services
         /// <paramref name="source"/>. Poles consumed by a multi-pole circuit resolve to that circuit.
         /// </summary>
         public static Dictionary<int, FixtureMoveTarget> GetTargets(BoardData board, ChassisData chassis,
-            CircuitData source)
+            CircuitData? source)
         {
             if (!board.Chassis.Contains(chassis))
                 throw new InvalidDataException("The destination chassis no longer belongs to its board.");
@@ -57,7 +57,7 @@ namespace Circuiting.Services
             return targets;
         }
 
-        public static FixtureMoveTarget GetTarget(BoardData board, ChassisData chassis, CircuitData source, int poleIndex)
+        public static FixtureMoveTarget GetTarget(BoardData board, ChassisData chassis, CircuitData? source, int poleIndex)
         {
             return GetTargets(board, chassis, source).TryGetValue(poleIndex, out FixtureMoveTarget? target)
                 ? target : throw new InvalidDataException("The destination position is outside the chassis.");
@@ -101,6 +101,53 @@ namespace Circuiting.Services
             circuit.Fixtures.Add(fixture);
             if (!CircuitLayout.IsOccupied(source) && !CircuitLayout.HasDetails(source))
                 sourceChassis.Circuits.Remove(source);
+            return circuit;
+        }
+
+        /// <summary>
+        /// Moves several elements, possibly from different circuits, to the circuit at <paramref name="poleIndex"/>.
+        /// Elements already on that circuit are left in place. Behaves like <see cref="Move"/> otherwise.
+        /// </summary>
+        public static CircuitData MoveMany(IReadOnlyList<FixtureRef> fixtures, BoardData destinationBoard,
+            ChassisData destination, int poleIndex, CircuitData? details = null)
+        {
+            foreach (FixtureRef fixture in fixtures)
+            {
+                if (!fixture.Chassis.Circuits.Contains(fixture.Circuit))
+                    throw new InvalidDataException($"Circuit {fixture.Circuit.DisplayLabel} no longer belongs to its chassis.");
+                if (!fixture.Circuit.Fixtures.Contains(fixture.Fixture))
+                    throw new InvalidDataException("An element is no longer assigned to its circuit.");
+            }
+            FixtureMoveTarget target = GetTarget(destinationBoard, destination, null, poleIndex);
+            List<FixtureRef> moving = fixtures.Where(f => !ReferenceEquals(f.Circuit, target.Circuit)).ToList();
+            if (moving.Count == 0)
+                throw new InvalidDataException("The selected elements are already on this circuit.");
+
+            CircuitData circuit = target.Circuit ?? new CircuitData
+            {
+                CircuitGuid = Guid.NewGuid(),
+                PoleIndex = target.Position.PoleIndex,
+                DisplayLabel = target.Position.DisplayLabel,
+                CircuitNumber = target.Position.CircuitNumber,
+                Poles = 1
+            };
+            if (target.CreatesCircuit && details != null)
+            {
+                circuit.Description = details.Description;
+                circuit.BreakerSize = details.BreakerSize;
+                circuit.ProtectionType = details.ProtectionType;
+                circuit.EarthLeakage = details.EarthLeakage;
+            }
+            if (target.Circuit == null) destination.Circuits.Add(circuit);
+
+            foreach (FixtureRef fixture in moving)
+            {
+                fixture.Circuit.Fixtures.Remove(fixture.Fixture);
+                circuit.Fixtures.Add(fixture.Fixture);
+            }
+            foreach (FixtureRef source in moving)
+                if (!CircuitLayout.IsOccupied(source.Circuit) && !CircuitLayout.HasDetails(source.Circuit))
+                    source.Chassis.Circuits.Remove(source.Circuit);
             return circuit;
         }
     }

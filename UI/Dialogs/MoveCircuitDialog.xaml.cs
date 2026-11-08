@@ -59,9 +59,11 @@ namespace Circuiting.UI.Dialogs
             if (destination != null)
                 SelectionText.Text = $"Move to {destination.Summary}{destination.Note}";
             else if (ChassisList.SelectedItem is MoveChassisOption { Available: 0 })
-                SelectionText.Text = _picker.Fixture != null
+                SelectionText.Text = _picker.IsElementMove
                     ? "This chassis has no other circuit positions."
-                    : "This chassis has no positions that fit this circuit.";
+                    : _picker.IsBulkCircuitMove
+                        ? "The selected circuits do not fit on this chassis."
+                        : "This chassis has no positions that fit this circuit.";
             else
                 SelectionText.Text = "Select a board, a chassis and then a target position.";
         }

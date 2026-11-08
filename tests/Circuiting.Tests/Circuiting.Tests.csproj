@@ -34,5 +34,7 @@
     <Compile Include="../../ViewModels/CircuitMovePicker.cs" Link="ViewModels/CircuitMovePicker.cs" />
     <Compile Include="../../ViewModels/FixtureDetails.cs" Link="ViewModels/FixtureDetails.cs" />
     <Compile Include="../../Services/FixtureMover.cs" Link="Services/FixtureMover.cs" />
+    <Compile Include="../../Services/BulkCircuitOperations.cs" Link="Services/BulkCircuitOperations.cs" />
+    <Compile Include="../../ViewModels/TreeSelection.cs" Link="ViewModels/TreeSelection.cs" />
   </ItemGroup>
 </Project>

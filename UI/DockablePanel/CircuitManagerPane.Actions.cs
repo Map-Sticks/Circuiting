@@ -16,8 +16,13 @@ namespace Circuiting.UI.DockablePanel
         private void CircuitRow_MouseLeftButtonDown(object sender,
             System.Windows.Input.MouseButtonEventArgs e)
         {
-            if (e.ClickCount != 2 || sender is not FrameworkElement element ||
-                element.DataContext is not CircuitRowViewModel row) return;
+            if (sender is not FrameworkElement element || element.DataContext is not CircuitRowViewModel row) return;
+            if (e.ClickCount == 1)
+            {
+                if (element is System.Windows.Controls.Grid grid) SelectCircuitAt(grid, row, e);
+                return;
+            }
+            if (e.ClickCount != 2) return;
             e.Handled = true;
             if (row.EditCommand == null)
             {
@@ -579,8 +584,13 @@ namespace Circuiting.UI.DockablePanel
 
         private void FixtureRow_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            if (e.ClickCount != 2 || sender is not FrameworkElement element ||
-                element.DataContext is not FixtureTreeNode fixture || fixture.ZoomCommand == null) return;
+            if (sender is not FrameworkElement element || element.DataContext is not FixtureTreeNode fixture) return;
+            if (e.ClickCount == 1)
+            {
+                SelectFixture(fixture);
+                return;
+            }
+            if (e.ClickCount != 2 || fixture.ZoomCommand == null) return;
             e.Handled = true;
             fixture.ZoomCommand.Execute(null);
         }

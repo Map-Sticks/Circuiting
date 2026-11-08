@@ -158,6 +158,7 @@ namespace Circuiting.UI.DockablePanel
             IsEnabled = false;
             BoardTree.ItemsSource = null;
             _treeNodes.Clear();
+            Selection.Clear();
             _fixtureDetails = new Dictionary<Guid, FixtureDetails>();
             if (_expandedBeforeSearch != null) _expandedBeforeSearch = new HashSet<Guid>();
         }
@@ -424,7 +425,11 @@ namespace Circuiting.UI.DockablePanel
             bool ctrl = (System.Windows.Input.Keyboard.Modifiers &
                 System.Windows.Input.ModifierKeys.Control) != 0;
 
-            if (!ctrl) return;
+            if (!ctrl)
+            {
+                if (HandleSelectionKey(e.Key)) e.Handled = true;
+                return;
+            }
 
             if (e.Key == System.Windows.Input.Key.F)
             {
@@ -530,6 +535,7 @@ namespace Circuiting.UI.DockablePanel
         {
             HashSet<Guid> expandedState = expanded ?? GetExpandedGuids();
             _treeNodes = CircuitTreeProjection.Build(_boards, this, expandedState, _search, out int matches);
+            RestoreSelection();
             BoardTree.ItemsSource = _treeNodes;
             StatusLabel.Text = _search.IsActive
                 ? $"{matches} match(es) for \"{_search.Text}\" in {_boards.Count} board(s)"

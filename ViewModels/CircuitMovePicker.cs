@@ -41,6 +41,8 @@ namespace Circuiting.ViewModels
         public bool ReplacesSpare { get; internal set; }
         /// <summary>Element moves only: the destination is a spare or space and becomes a new circuit.</summary>
         public bool CreatesCircuit { get; internal set; }
+        /// <summary>Bulk circuit moves only: where each selected circuit lands when starting here.</summary>
+        public BulkMovePlan? BulkPlan { get; internal set; }
         /// <summary>Element moves only: how the element would be placed at this position.</summary>
         public FixtureMoveTarget? FixtureTarget { get; internal set; }
         public bool IsAvailable => Error == null && !IsCurrent;
@@ -57,7 +59,11 @@ namespace Circuiting.ViewModels
             : FixtureTarget?.Kind == FixtureMoveKind.FillSpare
                 ? "The spare becomes a circuit; its saved details are kept and can be amended."
             : Status);
-        public string Note => ReplacesSpare ? " — replaces spare"
+        public string Note => BulkPlan is { IsValid: true } plan && plan.Placements.Count > 0
+                ? $" — {plan.Placements.Count} circuits to {plan.Placements[0].Position.DisplayLabel}" +
+                  (plan.Placements.Count > 1 ? $"…{plan.Placements[plan.Placements.Count - 1].Position.DisplayLabel}" : string.Empty) +
+                  (ReplacesSpare ? ", replaces spares" : string.Empty)
+            : ReplacesSpare ? " — replaces spare"
             : FixtureTarget?.Kind == FixtureMoveKind.NewCircuit ? " — creates a new circuit"
             : FixtureTarget?.Kind == FixtureMoveKind.FillSpare ? " — spare becomes a circuit"
             : FixtureTarget?.Kind == FixtureMoveKind.AddToCircuit && FixtureTarget.Circuit != null
@@ -77,12 +83,43 @@ namespace Circuiting.ViewModels
             new Dictionary<ChassisData, List<MovePositionOption>>();
 
         public CircuitMovePicker(IEnumerable<BoardData> boards, BoardData sourceBoard,
-            ChassisData source, CircuitData circuit, CircuitedFixture? fixture = null)
+            ChassisData source, CircuitData circuit)
+            : this(boards, new[] { new CircuitRef { Board = sourceBoard, Chassis = source, Circuit = circuit } },
+                Array.Empty<FixtureRef>())
         {
-            SourceBoard = sourceBoard;
-            Source = source;
-            Circuit = circuit;
-            Fixture = fixture;
+        }
+
+        /// <summary>Picker for moving several circuits: the first lands on the chosen position, the rest follow.</summary>
+        public CircuitMovePicker(IEnumerable<BoardData> boards, IReadOnlyList<CircuitRef> circuits)
+            : this(boards, circuits, Array.Empty<FixtureRef>())
+        {
+        }
+
+        /// <summary>Picker for moving one or more circuited elements to a single destination circuit.</summary>
+        public CircuitMovePicker(IEnumerable<BoardData> boards, IReadOnlyList<FixtureRef> fixtures)
+            : this(boards, Array.Empty<CircuitRef>(), fixtures)
+        {
+        }
+
+        private CircuitMovePicker(IEnumerable<BoardData> boards, IReadOnlyList<CircuitRef> circuits,
+            IReadOnlyList<FixtureRef> fixtures)
+        {
+            if (circuits.Count == 0 && fixtures.Count == 0)
+                throw new ArgumentException("Nothing was selected to move.");
+            Circuits = circuits;
+            Fixtures = fixtures;
+            SourceBoard = fixtures.Count > 0 ? fixtures[0].Board : circuits[0].Board;
+            Source = fixtures.Count > 0 ? fixtures[0].Chassis : circuits[0].Chassis;
+            Circuit = fixtures.Count > 0 ? fixtures[0].Circuit : circuits[0].Circuit;
+            if (fixtures.Count > 0)
+            {
+                CurrentCircuit = fixtures.All(f => ReferenceEquals(f.Circuit, Circuit)) ? Circuit : null;
+                if (CurrentCircuit != null) _moving.Add(CurrentCircuit);
+            }
+            else
+            {
+                foreach (CircuitRef selected in circuits) _moving.Add(selected.Circuit);
+            }
             foreach (BoardData board in boards)
             {
                 var chassisOptions = new List<MoveChassisOption>();
@@ -92,24 +129,32 @@ namespace Circuiting.ViewModels
                     _positions[chassis] = positions;
                     chassisOptions.Add(new MoveChassisOption
                     {
-                        Board = board, Chassis = chassis, IsSource = ReferenceEquals(chassis, source),
+                        Board = board, Chassis = chassis, IsSource = ReferenceEquals(chassis, Source),
                         Available = positions.Count(p => p.IsAvailable)
                     });
                 }
                 ChassisByBoard[board] = chassisOptions;
                 Boards.Add(new MoveBoardOption
                 {
-                    Board = board, IsSource = ReferenceEquals(board, sourceBoard),
+                    Board = board, IsSource = ReferenceEquals(board, SourceBoard),
                     Available = chassisOptions.Sum(c => c.Available)
                 });
             }
         }
 
+        private readonly HashSet<CircuitData> _moving = new HashSet<CircuitData>();
         public BoardData SourceBoard { get; }
         public ChassisData Source { get; }
+        /// <summary>The (first) circuit being moved, or the circuit of the (first) element being moved.</summary>
         public CircuitData Circuit { get; }
-        public CircuitedFixture? Fixture { get; }
-        public string Title => Fixture != null ? "Move Element to Circuit" : "Move Circuit";
+        public IReadOnlyList<CircuitRef> Circuits { get; }
+        public IReadOnlyList<FixtureRef> Fixtures { get; }
+        /// <summary>Element moves: the circuit holding every moved element, or null when they come from several.</summary>
+        public CircuitData? CurrentCircuit { get; }
+        public bool IsElementMove => Fixtures.Count > 0;
+        public bool IsBulkCircuitMove => Circuits.Count > 1;
+        public string Title => IsElementMove ? (Fixtures.Count > 1 ? "Move Elements to Circuit" : "Move Element to Circuit")
+            : IsBulkCircuitMove ? "Move Circuits" : "Move Circuit";
         public List<MoveBoardOption> Boards { get; } = new List<MoveBoardOption>();
         private Dictionary<BoardData, List<MoveChassisOption>> ChassisByBoard { get; } =
             new Dictionary<BoardData, List<MoveChassisOption>>();
@@ -119,11 +164,25 @@ namespace Circuiting.ViewModels
         {
             get
             {
-                if (Fixture != null)
+                if (Fixtures.Count > 1)
                 {
-                    string name = string.IsNullOrWhiteSpace(Fixture.FamilyName) ? "element" : Fixture.FamilyName;
+                    int circuits = Fixtures.Select(f => f.Circuit).Distinct().Count();
+                    return $"Move {Fixtures.Count} elements (from {circuits} circuit(s)) to one circuit. " +
+                        "Choosing a spare or space creates a new circuit.";
+                }
+                if (IsElementMove)
+                {
+                    CircuitedFixture fixture = Fixtures[0].Fixture;
+                    string name = string.IsNullOrWhiteSpace(fixture.FamilyName) ? "element" : fixture.FamilyName;
                     return $"Move {name} from {Circuit.DisplayLabel} on {SourceBoard.DisplayName} / {Source.Name} " +
                         "to another circuit. Choosing a spare or space creates a new circuit.";
+                }
+                if (IsBulkCircuitMove)
+                {
+                    string labels = string.Join(", ", Circuits.Take(8).Select(c => c.Circuit.DisplayLabel)) +
+                        (Circuits.Count > 8 ? ", ..." : string.Empty);
+                    return $"Move {Circuits.Count} circuits ({labels}). The first lands on the chosen position; " +
+                        "the others fill the next free positions in order.";
                 }
                 string description = string.IsNullOrWhiteSpace(Circuit.Description) ? string.Empty
                     : $" — {Circuit.Description}";
@@ -159,7 +218,8 @@ namespace Circuiting.ViewModels
 
         private List<MovePositionOption> BuildPositions(BoardData board, ChassisData chassis)
         {
-            if (Fixture != null) return BuildFixturePositions(board, chassis);
+            if (IsElementMove) return BuildFixturePositions(board, chassis);
+            if (IsBulkCircuitMove) return BuildBulkPositions(board, chassis);
             List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(board, chassis);
             string? chassisError = CircuitLayout.GetMoveErrors(Source, Circuit, board, chassis,
                 out Dictionary<int, string?> errors);
@@ -196,7 +256,7 @@ namespace Circuiting.ViewModels
             string? chassisError = null;
             try
             {
-                targets = FixtureMover.GetTargets(board, chassis, Circuit);
+                targets = FixtureMover.GetTargets(board, chassis, CurrentCircuit);
             }
             catch (System.IO.InvalidDataException ex)
             {
@@ -217,10 +277,40 @@ namespace Circuiting.ViewModels
                 }).ToList();
         }
 
+        private List<MovePositionOption> BuildBulkPositions(BoardData board, ChassisData chassis)
+        {
+            Dictionary<int, BulkMovePlan> plans = BulkCircuitOperations.PlanMoves(Circuits, board, chassis);
+            Dictionary<int, CircuitData> owners = Owners(chassis);
+            return CircuitLabelCalculator.Calculate(board, chassis).Select(position =>
+            {
+                owners.TryGetValue(position.PoleIndex, out CircuitData? owner);
+                BulkMovePlan plan = plans[position.PoleIndex];
+                return new MovePositionOption
+                {
+                    Board = board, Chassis = chassis, Position = position,
+                    Contents = Describe(owner, position.PoleIndex),
+                    Error = plan.Error, IsCurrent = plan.IsValid && plan.IsNoOp, BulkPlan = plan,
+                    ReplacesSpare = plan.IsValid && !plan.IsNoOp && plan.ReplacedSpares.Any(CircuitLayout.HasDetails)
+                };
+            }).ToList();
+        }
+
+        private static Dictionary<int, CircuitData> Owners(ChassisData chassis)
+        {
+            var owners = new Dictionary<int, CircuitData>();
+            foreach (CircuitData other in chassis.Circuits)
+            {
+                if (!other.PoleIndex.HasValue) continue;
+                for (int i = 0; i < other.Poles; i++)
+                    owners[other.PoleIndex.Value + i * 2] = other;
+            }
+            return owners;
+        }
+
         private string Describe(CircuitData? owner, int poleIndex)
         {
             if (owner == null) return "Space";
-            if (ReferenceEquals(owner, Circuit)) return "(this circuit)";
+            if (_moving.Contains(owner)) return _moving.Count > 1 ? "(selected circuit)" : "(this circuit)";
             if (owner.PoleIndex != poleIndex) return $"(pole of {owner.DisplayLabel})";
             string poles = owner.Poles > 1 ? $" ({owner.Poles}-pole)" : string.Empty;
             if (CircuitLayout.IsOccupied(owner))

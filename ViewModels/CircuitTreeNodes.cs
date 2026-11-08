@@ -27,6 +27,7 @@ namespace Circuiting.ViewModels
         void ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture, bool zoom);
         void MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture);
         FixtureDetails? GetFixtureDetails(CircuitedFixture fixture);
+        TreeSelection Selection { get; }
     }
 
     public abstract class CircuitTreeNode : ObservableObject
@@ -205,6 +206,7 @@ namespace Circuiting.ViewModels
             SelectLabel = $"☑️  Select Element (edit properties) — {Name}";
             MoveLabel = $"↔️  Move to Circuit... — {Name}";
             if (actions == null) return;
+            Selection = actions.Selection;
             MoveCommand = new RelayCommand(() => actions.MoveFixture(board, chassis, circuit, fixture));
             ZoomCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, true));
             SelectCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, false));
@@ -227,5 +229,13 @@ namespace Circuiting.ViewModels
         public IRelayCommand? SelectCommand { get; }
         public string MoveLabel { get; }
         public IRelayCommand? MoveCommand { get; }
+        public TreeSelection? Selection { get; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set => SetProperty(ref _isSelected, value);
+        }
     }
 }

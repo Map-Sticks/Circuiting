@@ -127,6 +127,17 @@ the chassis dialog offers an explicit option to remove it.
   protection (pre-filled with the spare's saved details). Moving the last
   element off a circuit leaves it as a spare if it has saved details,
   otherwise as a space. Moves are saved to the elements and can be undone.
+- **Select several circuits or elements**: click a circuit side or an
+  element row to select it, **Ctrl**+click to add or remove items, and
+  **Shift**+click to select the range from the last clicked item (in visible
+  tree order; **Ctrl+Shift** adds the range). A selection holds either circuits
+  or elements. Right-click a selected item for **Move N Selected...** and
+  **Delete N Selected Circuits** / **Unassign N Selected Elements**, or press
+  **Delete**; **Esc** clears the selection. Alt-dragging a selected item drags
+  the whole selection. Bulk-moved circuits keep their order: the first lands
+  on the chosen position and the rest take the next free positions where they
+  fit. Bulk-moved elements all go to one circuit (a spare or space becomes a
+  new circuit). Unassigning elements keeps them in the model.
 - Deleting a circuit can unassign its fixtures or move them to another
   existing circuit. Deleting a chassis or board, clearing a chassis, and
   **Clear All** unassign their referenced fixtures. **Clear All** requires two
@@ -279,3 +290,11 @@ Run on a disposable copy of a model in each supported Revit version:
     and onto a pole of a 3-pole circuit. Confirm the emptied source becomes a
     spare/space, the element's stored assignment updates (Validate Model finds
     nothing), and Undo restores the previous circuits.
+16. Multi-select: Ctrl+click, Shift+click and Ctrl+Shift+click circuits
+    (both sides of a row, across chassis) and elements; confirm the
+    highlight, that clicking an element after circuits starts a new
+    selection, and that collapsing/searching keeps the selection. Bulk move
+    circuits via the picker and Alt-drag (including a 3-pole circuit and onto
+    spares with details), bulk move elements onto a circuit and onto a space,
+    bulk delete circuits and unassign elements via the menu and the Delete
+    key, Esc to clear, and Undo after each.

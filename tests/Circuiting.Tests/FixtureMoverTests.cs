@@ -114,7 +114,8 @@ public class FixtureMoverTests
         chassis.Circuits.AddRange(new[] { source, spare, Circuit(2, Fixture("Panel")) });
         CircuitLayout.ValidateAndUpdate(board, chassis);
 
-        var picker = new CircuitMovePicker(new[] { board }, board, chassis, source, light);
+        var picker = new CircuitMovePicker(new[] { board },
+            new[] { new FixtureRef { Board = board, Chassis = chassis, Circuit = source, Fixture = light } });
         List<MovePositionOption> all = picker.PositionsFor(chassis, availableOnly: false);
 
         Assert.Equal("Move Element to Circuit", picker.Title);

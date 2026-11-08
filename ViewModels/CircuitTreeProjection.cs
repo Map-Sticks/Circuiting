@@ -30,6 +30,24 @@ namespace Circuiting.ViewModels
         public bool HasFixtures => Fixtures.Count > 0;
         public bool LeftConsumed => LeftConsumedInfo != null;
         public bool RightConsumed => RightConsumedInfo != null;
+        /// <summary>GUID of the circuit on each side (the parent circuit for a consumed pole).</summary>
+        public Guid? LeftKey => (LeftConsumedInfo?.Parent ?? LeftCircuit)?.CircuitGuid;
+        public Guid? RightKey => (RightConsumedInfo?.Parent ?? RightCircuit)?.CircuitGuid;
+        public TreeSelection? Selection { get; set; }
+
+        private bool _isLeftSelected;
+        public bool IsLeftSelected
+        {
+            get => _isLeftSelected;
+            set => SetProperty(ref _isLeftSelected, value);
+        }
+
+        private bool _isRightSelected;
+        public bool IsRightSelected
+        {
+            get => _isRightSelected;
+            set => SetProperty(ref _isRightSelected, value);
+        }
     }
 
     public sealed class CircuitSideViewModel
@@ -199,6 +217,7 @@ namespace Circuiting.ViewModels
                     rowModel.LeftCommands = new CircuitSideCommands(board, chassis, left, leftStart, leftInfo, actions);
                     rowModel.RightCommands = new CircuitSideCommands(board, chassis, right, rightStart, rightInfo, actions);
                     rowModel.EditCommand = new RelayCommand(() => actions.EditRow(rowModel));
+                    rowModel.Selection = actions.Selection;
                 }
                 rows.Add(rowModel);
             }

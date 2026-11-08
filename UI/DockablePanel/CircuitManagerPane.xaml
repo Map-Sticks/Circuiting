@@ -92,7 +92,7 @@
             </Style.Triggers>
         </Style>
         <DataTemplate DataType="{x:Type viewModels:FixtureTreeNode}">
-            <Grid Background="Transparent" Loaded="TreeHeader_Loaded" ToolTip="{Binding ToolTip}"
+            <Grid Loaded="TreeHeader_Loaded" ToolTip="{Binding ToolTip}"
                   MouseLeftButtonDown="FixtureRow_MouseLeftButtonDown"
                   PreviewMouseLeftButtonDown="FixtureRow_PreviewMouseLeftButtonDown"
                   PreviewMouseLeftButtonUp="FixtureRow_PreviewMouseLeftButtonUp"
@@ -104,8 +104,25 @@
                         <MenuItem Header="{Binding SelectLabel}" Command="{Binding SelectCommand}"/>
                         <Separator/>
                         <MenuItem Header="{Binding MoveLabel}" Command="{Binding MoveCommand}"/>
+                        <Separator Visibility="{Binding Selection.HasMultipleElements, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.MoveElementsLabel}" Command="{Binding Selection.MoveCommand}"
+                                  Visibility="{Binding Selection.HasMultipleElements, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.DeleteElementsLabel}" Command="{Binding Selection.DeleteCommand}"
+                                  Visibility="{Binding Selection.HasMultipleElements, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.ClearLabel}" Command="{Binding Selection.ClearCommand}"
+                                  Visibility="{Binding Selection.HasMultipleElements, Converter={StaticResource BooleanToVisibility}}"/>
                     </ContextMenu>
                 </Grid.ContextMenu>
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="Background" Value="#264F78"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="20"/>
                     <ColumnDefinition Width="55"/>
@@ -165,6 +182,13 @@
                                   Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.RemoveLabel}" Command="{Binding RightCommands.RemoveCommand}"
                                   Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
+                        <Separator Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.MoveCircuitsLabel}" Command="{Binding Selection.MoveCommand}"
+                                  Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.DeleteCircuitsLabel}" Command="{Binding Selection.DeleteCommand}"
+                                  Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
+                        <MenuItem Header="{Binding Selection.ClearLabel}" Command="{Binding Selection.ClearCommand}"
+                                  Visibility="{Binding Selection.HasMultipleCircuits, Converter={StaticResource BooleanToVisibility}}"/>
                     </ContextMenu>
                 </Grid.ContextMenu>
                 <Grid.ColumnDefinitions>
@@ -178,6 +202,10 @@
                     <ColumnDefinition Width="130"/>
                     <ColumnDefinition Width="45"/>
                 </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Grid.ColumnSpan="4" Background="#264F78" IsHitTestVisible="False"
+                        Visibility="{Binding IsLeftSelected, Converter={StaticResource BooleanToVisibility}}"/>
+                <Border Grid.Column="5" Grid.ColumnSpan="4" Background="#264F78" IsHitTestVisible="False"
+                        Visibility="{Binding IsRightSelected, Converter={StaticResource BooleanToVisibility}}"/>
                 <TextBlock Grid.Column="0" Text="{Binding LeftDisplay.Label}"
                            Foreground="#C8C8C8" Style="{StaticResource CircuitCellStyle}"/>
                 <TextBlock Grid.Column="1" DataContext="{Binding LeftDisplay}" Text="{Binding Description}"
