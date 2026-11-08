@@ -118,6 +118,15 @@ the chassis dialog offers an explicit option to remove it.
   palette without the view moving. Double-clicking an element zooms to it.
   Space details are read live from the model when the project loads and after
   each model change. Elements no longer in the model are shown in red.
+- **Move an element to another circuit**: right-click an element (or use its
+  **↔** button) and choose **Move to Circuit...** to pick a board, chassis and
+  position with the same picker as Move Circuit, or hold **Alt** and drag the
+  element onto a circuit position (or onto another element to join its
+  circuit). A circuit with elements receives the element. A spare or space
+  becomes a new circuit: a **New Circuit** dialog asks for its description and
+  protection (pre-filled with the spare's saved details). Moving the last
+  element off a circuit leaves it as a spare if it has saved details,
+  otherwise as a space. Moves are saved to the elements and can be undone.
 - Deleting a circuit can unassign its fixtures or move them to another
   existing circuit. Deleting a chassis or board, clearing a chassis, and
   **Clear All** unassign their referenced fixtures. **Clear All** requires two
@@ -264,3 +273,9 @@ Run on a disposable copy of a model in each supported Revit version:
     and Select from the buttons and context menu, double-click to zoom, move
     an element to another space and confirm the space updates, and confirm
     expanded rows stay expanded after edits.
+15. Move elements between circuits: via the picker and Alt-drag, onto a
+    circuit with elements, a spare (details pre-filled) and a space (new
+    circuit dialog; Cancel leaves everything unchanged), onto another board,
+    and onto a pole of a 3-pole circuit. Confirm the emptied source becomes a
+    spare/space, the element's stored assignment updates (Validate Model finds
+    nothing), and Undo restores the previous circuits.

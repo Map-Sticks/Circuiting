@@ -28,6 +28,9 @@
                 <DataTrigger Binding="{Binding ReplacesSpare}" Value="True">
                     <Setter Property="Foreground" Value="#E0C080"/>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding CreatesCircuit}" Value="True">
+                    <Setter Property="Foreground" Value="#90D090"/>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>

@@ -258,13 +258,15 @@ namespace Circuiting.UI.DockablePanel
             _history.Push(ProjectDataSerializer.Serialize(_project));
         }
 
-        private void SaveAndRefresh()
+        private void SaveAndRefresh(IEnumerable<Guid>? alsoExpand = null)
         {
             if (!_dataLoaded || _document == null) return;
             try
             {
                 string desired = ProjectDataSerializer.Serialize(_project);
-                RefreshTree();
+                HashSet<Guid> expanded = GetExpandedGuids();
+                if (alsoExpand != null) expanded.UnionWith(alsoExpand);
+                RefreshTree(expanded);
                 QueueRequest(RevitAction.Save, desired);
             }
             catch (Exception ex)

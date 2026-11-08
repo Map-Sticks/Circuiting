@@ -35,6 +35,8 @@ namespace Circuiting.UI.Dialogs
             PolesCombo.IsEnabled = allowMultiPole || existing?.Poles > 1;
         }
 
+        public void LockPoles() => PolesCombo.IsEnabled = false;
+
         public bool HasData => _existing != null || !string.IsNullOrWhiteSpace(DescriptionBox.Text) ||
             BreakerCombo.SelectedIndex > 0 || ProtectionCombo.SelectedIndex > 0 ||
             LeakageCombo.SelectedIndex > 0 || (PolesCombo.SelectedItem is int poles && poles > 1);

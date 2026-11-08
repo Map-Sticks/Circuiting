@@ -587,6 +587,8 @@ namespace Circuiting.UI.DockablePanel
 
         void ICircuitTreeActions.ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit,
             CircuitedFixture fixture, bool zoom) => OnShowFixture(board, chassis, circuit, fixture, zoom);
+        void ICircuitTreeActions.MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit,
+            CircuitedFixture fixture) => OnMoveFixture(board, chassis, circuit, fixture);
         FixtureDetails? ICircuitTreeActions.GetFixtureDetails(CircuitedFixture fixture) =>
             _fixtureDetails.TryGetValue(fixture.FixtureGuid, out FixtureDetails? details) ? details : null;
 

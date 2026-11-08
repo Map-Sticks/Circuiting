@@ -150,6 +150,8 @@ public class CircuitTreeProjectionTests
         public void RemoveFixtures(BoardData board, ChassisData chassis, CircuitData circuit) => Record("remove", circuit);
         public void ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture,
             bool zoom) => Record(zoom ? "zoom-fixture" : "select-fixture", fixture);
+        public void MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture) =>
+            Record("move-fixture", fixture);
         public Dictionary<Guid, FixtureDetails> Details { get; } = new();
         public FixtureDetails? GetFixtureDetails(CircuitedFixture fixture) =>
             Details.TryGetValue(fixture.FixtureGuid, out FixtureDetails? details) ? details : null;

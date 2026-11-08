@@ -93,11 +93,17 @@
         </Style>
         <DataTemplate DataType="{x:Type viewModels:FixtureTreeNode}">
             <Grid Background="Transparent" Loaded="TreeHeader_Loaded" ToolTip="{Binding ToolTip}"
-                  MouseLeftButtonDown="FixtureRow_MouseLeftButtonDown">
+                  MouseLeftButtonDown="FixtureRow_MouseLeftButtonDown"
+                  PreviewMouseLeftButtonDown="FixtureRow_PreviewMouseLeftButtonDown"
+                  PreviewMouseLeftButtonUp="FixtureRow_PreviewMouseLeftButtonUp"
+                  PreviewMouseMove="FixtureRow_PreviewMouseMove"
+                  AllowDrop="True" DragOver="FixtureRow_DragOver" Drop="FixtureRow_Drop">
                 <Grid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="{Binding ZoomLabel}" Command="{Binding ZoomCommand}"/>
                         <MenuItem Header="{Binding SelectLabel}" Command="{Binding SelectCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="{Binding MoveLabel}" Command="{Binding MoveCommand}"/>
                     </ContextMenu>
                 </Grid.ContextMenu>
                 <Grid.ColumnDefinitions>
@@ -121,6 +127,8 @@
                             ToolTip="Zoom to the element in the model"/>
                     <Button Content="☑" Command="{Binding SelectCommand}" Style="{StaticResource FixtureButtonStyle}"
                             ToolTip="Select the element without zooming, to edit its properties"/>
+                    <Button Content="↔" Command="{Binding MoveCommand}" Style="{StaticResource FixtureButtonStyle}"
+                            ToolTip="Move the element to another circuit (or Alt+drag it onto a circuit position)"/>
                 </StackPanel>
             </Grid>
         </DataTemplate>

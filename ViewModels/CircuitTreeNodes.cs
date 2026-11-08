@@ -25,6 +25,7 @@ namespace Circuiting.ViewModels
         void SelectFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
         void RemoveFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
         void ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture, bool zoom);
+        void MoveFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture);
         FixtureDetails? GetFixtureDetails(CircuitedFixture fixture);
     }
 
@@ -164,6 +165,8 @@ namespace Circuiting.ViewModels
         internal FixtureTreeNode(BoardData board, ChassisData chassis, CircuitData circuit,
             CircuitedFixture fixture, Side side, ICircuitTreeActions? actions)
         {
+            Board = board;
+            Chassis = chassis;
             Circuit = circuit;
             Fixture = fixture;
             Side = side;
@@ -196,15 +199,19 @@ namespace Circuiting.ViewModels
             {
                 tip.Add("The element could not be found in the model. Run Validate Model to repair the assignment.");
             }
-            tip.Add("Double-click to zoom to the element.");
+            tip.Add("Double-click to zoom to the element. Alt+drag onto a circuit position to move it.");
             ToolTip = string.Join(Environment.NewLine, tip);
             ZoomLabel = $"🔍  Zoom to Element — {Name}";
             SelectLabel = $"☑️  Select Element (edit properties) — {Name}";
+            MoveLabel = $"↔️  Move to Circuit... — {Name}";
             if (actions == null) return;
+            MoveCommand = new RelayCommand(() => actions.MoveFixture(board, chassis, circuit, fixture));
             ZoomCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, true));
             SelectCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, false));
         }
 
+        public BoardData Board { get; }
+        public ChassisData Chassis { get; }
         public CircuitData Circuit { get; }
         public CircuitedFixture Fixture { get; }
         public Side Side { get; }
@@ -218,5 +225,7 @@ namespace Circuiting.ViewModels
         public string SelectLabel { get; }
         public IRelayCommand? ZoomCommand { get; }
         public IRelayCommand? SelectCommand { get; }
+        public string MoveLabel { get; }
+        public IRelayCommand? MoveCommand { get; }
     }
 }

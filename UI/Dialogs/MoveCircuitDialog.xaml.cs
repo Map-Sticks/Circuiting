@@ -14,6 +14,7 @@ namespace Circuiting.UI.Dialogs
             InitializeComponent();
             _picker = picker;
             CircuitText.Text = picker.CircuitSummary;
+            Title = picker.Title;
             _ready = true;
             RefreshBoards();
             BoardList.SelectedItem = BoardList.Items.OfType<MoveBoardOption>().FirstOrDefault(b => b.IsSource)
@@ -56,10 +57,11 @@ namespace Circuiting.UI.Dialogs
             MovePositionOption? destination = Destination;
             MoveButton.IsEnabled = destination?.IsAvailable == true;
             if (destination != null)
-                SelectionText.Text = $"Move to {destination.Summary}" +
-                    (destination.ReplacesSpare ? " — replaces spare" : string.Empty);
+                SelectionText.Text = $"Move to {destination.Summary}{destination.Note}";
             else if (ChassisList.SelectedItem is MoveChassisOption { Available: 0 })
-                SelectionText.Text = "This chassis has no positions that fit this circuit.";
+                SelectionText.Text = _picker.Fixture != null
+                    ? "This chassis has no other circuit positions."
+                    : "This chassis has no positions that fit this circuit.";
             else
                 SelectionText.Text = "Select a board, a chassis and then a target position.";
         }
@@ -102,7 +104,7 @@ namespace Circuiting.UI.Dialogs
         {
             if (Destination?.IsAvailable != true)
             {
-                MessageBox.Show("Select an available target position.", "Move Circuit",
+                MessageBox.Show("Select an available target position.", _picker.Title,
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
