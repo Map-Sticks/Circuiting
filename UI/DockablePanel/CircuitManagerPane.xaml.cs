@@ -155,6 +155,7 @@ namespace Circuiting.UI.DockablePanel
             IsEnabled = false;
             BoardTree.ItemsSource = null;
             _treeNodes.Clear();
+            if (_expandedBeforeSearch != null) _expandedBeforeSearch = new HashSet<Guid>();
         }
 
         public sealed class ClosingDocumentState
@@ -418,6 +419,16 @@ namespace Circuiting.UI.DockablePanel
 
             if (!ctrl) return;
 
+            if (e.Key == System.Windows.Input.Key.F)
+            {
+                SearchBox.Focus();
+                SearchBox.SelectAll();
+                e.Handled = true;
+                return;
+            }
+            // Leave Ctrl+Z/Y to the search box's own text undo.
+            if (SearchBox.IsKeyboardFocusWithin) return;
+
             if (e.Key == System.Windows.Input.Key.Z)
             {
                 Undo();
@@ -433,6 +444,7 @@ namespace Circuiting.UI.DockablePanel
 
         private HashSet<Guid> GetExpandedGuids()
         {
+            if (_expandedBeforeSearch != null) return new HashSet<Guid>(_expandedBeforeSearch);
             var expanded = new HashSet<Guid>();
             foreach (BoardTreeNode board in _treeNodes)
             {
@@ -445,6 +457,11 @@ namespace Circuiting.UI.DockablePanel
 
         private void RestoreExpandedState(HashSet<Guid> expanded)
         {
+            if (_search.IsActive)
+            {
+                _expandedBeforeSearch = new HashSet<Guid>(expanded);
+                return;
+            }
             foreach (BoardTreeNode board in _treeNodes)
             {
                 board.IsExpanded = expanded.Contains(board.Board.BoardGuid);
@@ -455,12 +472,16 @@ namespace Circuiting.UI.DockablePanel
 
         // ─── Tree Building ───────────────────────────────────────
 
-        public void RefreshTree()
+        public void RefreshTree() => RefreshTree(null);
+
+        private void RefreshTree(HashSet<Guid>? expanded)
         {
-            HashSet<Guid> expandedState = GetExpandedGuids();
-            _treeNodes = CircuitTreeProjection.Build(_boards, this, expandedState);
+            HashSet<Guid> expandedState = expanded ?? GetExpandedGuids();
+            _treeNodes = CircuitTreeProjection.Build(_boards, this, expandedState, _search, out int matches);
             BoardTree.ItemsSource = _treeNodes;
-            StatusLabel.Text = $"{_boards.Count} board(s) loaded";
+            StatusLabel.Text = _search.IsActive
+                ? $"{matches} match(es) for \"{_search.Text}\" in {_boards.Count} board(s)"
+                : $"{_boards.Count} board(s) loaded";
         }
 
         private void TreeHeader_Loaded(object sender, RoutedEventArgs e)
@@ -516,6 +537,7 @@ namespace Circuiting.UI.DockablePanel
                     : new List<string>()
             };
 
+            if (_search.IsActive) ClearSearch();
             PushUndoState();
             board.Chassis.Add(defaultChassis);
             _boards.Add(board);

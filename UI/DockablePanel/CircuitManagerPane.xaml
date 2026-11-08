@@ -8,6 +8,11 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibility"/>
         <Style x:Key="CircuitTreeItemStyle" TargetType="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSearchMatch}" Value="True">
+                    <Setter Property="Background" Value="#3A3D2A"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <HierarchicalDataTemplate DataType="{x:Type viewModels:BoardTreeNode}"
                                   ItemsSource="{Binding Chassis}"
@@ -119,6 +124,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -253,9 +259,68 @@
             </WrapPanel>
         </Border>
 
+        <!-- Search -->
+        <Border Grid.Row="2" Background="#252525" Padding="8,0,8,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox"
+                         Background="#333333"
+                         Foreground="White"
+                         CaretBrush="White"
+                         BorderBrush="#555555"
+                         Padding="4,3"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Search DBs, chassis and circuits (label, number, description, breaker, protection). Enter applies, Esc clears."
+                         TextChanged="SearchBox_TextChanged"
+                         KeyDown="SearchBox_KeyDown"/>
+                <TextBlock Text="🔍 Search..."
+                           Foreground="#777777"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <ComboBox x:Name="SearchScopeCombo"
+                          Grid.Column="1"
+                          Width="90"
+                          Margin="4,0,0,0"
+                          ToolTip="Limit the search to one kind of item"
+                          SelectionChanged="SearchScopeCombo_SelectionChanged">
+                    <ComboBoxItem Content="All" Tag="All" IsSelected="True"/>
+                    <ComboBoxItem Content="DBs" Tag="Boards"/>
+                    <ComboBoxItem Content="Chassis" Tag="Chassis"/>
+                    <ComboBoxItem Content="Circuits" Tag="Circuits"/>
+                </ComboBox>
+                <Button x:Name="ClearSearchButton"
+                        Grid.Column="2"
+                        Content="✕"
+                        ToolTip="Clear search"
+                        Click="ClearSearchButton_Click"
+                        Background="#3C3C3C"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Padding="8,2"
+                        Margin="4,0,0,0"
+                        Cursor="Hand"/>
+            </Grid>
+        </Border>
+
         <!-- Tree View -->
         <TreeView x:Name="BoardTree"
-                  Grid.Row="2"
+                  Grid.Row="3"
                   ItemContainerStyle="{StaticResource CircuitTreeItemStyle}"
                   Background="#1E1E1E"
                   Foreground="White"
@@ -266,7 +331,7 @@
                   DragOver="BoardTree_DragOver"/>
 
         <!-- Status Bar -->
-        <Border Grid.Row="3" Background="#2D2D2D" Padding="10,5">
+        <Border Grid.Row="4" Background="#2D2D2D" Padding="10,5">
             <TextBlock x:Name="StatusLabel"
                        Text="Ready"
                        Foreground="#AAAAAA"

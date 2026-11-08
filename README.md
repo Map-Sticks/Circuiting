@@ -46,6 +46,14 @@ poles before changing their chassis to single phase.
 Legacy chassis with one or two phase labels retain that pattern when edited;
 the chassis dialog offers an explicit option to remove it.
 
+- **Search** (below the toolbar, or Ctrl+F) filters the tree as you type. The
+  filter list limits it to **DBs**, **Chassis**, or **Circuits**; **All** searches
+  every type. Circuits match on label, number, description, breaker, protection
+  and earth leakage; every word must match (e.g. `16A RCBO`). A matching DB or
+  chassis shows all its contents; otherwise only rows with matching circuits are
+  shown, with every pole of a multi-pole circuit. Matches are highlighted and
+  counted in the status bar. Enter applies immediately, Esc or ✕ clears and
+  restores the previous expand/collapse state. Adding a board clears the search.
 - **Move Left/Right** in a circuit row's context menu opens a destination picker.
   Alternatively, hold **Alt** and drag a circuit with the left mouse button onto
   the desired left or right position. Collapsed boards and chassis expand when
@@ -187,3 +195,6 @@ Run on a disposable copy of a model in each supported Revit version:
    pending. Confirm no request or history is applied to the wrong document.
 8. Test read-only/workshared or otherwise failing writes and confirm errors
    are visible and model data is not partially changed.
+9. Search each scope across several DBs: type in the search box, Ctrl+F,
+   Enter, Esc and ✕. Edit, move and assign from filtered rows, switch
+   documents while searching, then clear and confirm expansion is restored.

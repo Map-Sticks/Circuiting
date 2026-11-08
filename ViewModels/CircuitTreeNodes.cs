@@ -31,15 +31,24 @@ namespace Circuiting.ViewModels
             get => _isExpanded;
             set => SetProperty(ref _isExpanded, value);
         }
+
+        public bool IsSearchMatch { get; internal set; }
     }
 
     public sealed class BoardTreeNode : CircuitTreeNode
     {
         internal BoardTreeNode(BoardData board, ICircuitTreeActions actions, ISet<Guid> expanded)
+            : this(board, actions, expanded.Contains(board.BoardGuid),
+                board.Chassis.Select(c => new ChassisTreeNode(board, c, actions, expanded)).ToList())
+        {
+        }
+
+        internal BoardTreeNode(BoardData board, ICircuitTreeActions actions, bool isExpanded,
+            List<ChassisTreeNode> chassis)
         {
             Board = board;
-            IsExpanded = expanded.Contains(board.BoardGuid);
-            Chassis = board.Chassis.Select(c => new ChassisTreeNode(board, c, actions, expanded)).ToList();
+            IsExpanded = isExpanded;
+            Chassis = chassis;
             AddChassisCommand = new RelayCommand(() => actions.AddChassis(board));
             RenameCommand = new RelayCommand(() => actions.RenameBoard(board));
             DeleteCommand = new RelayCommand(() => actions.DeleteBoard(board));
@@ -58,10 +67,17 @@ namespace Circuiting.ViewModels
     {
         internal ChassisTreeNode(BoardData board, ChassisData chassis,
             ICircuitTreeActions actions, ISet<Guid> expanded)
+            : this(board, chassis, actions, expanded.Contains(chassis.ChassisGuid),
+                CircuitTreeProjection.BuildRows(board, chassis, actions))
+        {
+        }
+
+        internal ChassisTreeNode(BoardData board, ChassisData chassis, ICircuitTreeActions actions,
+            bool isExpanded, List<CircuitRowViewModel> rows)
         {
             Chassis = chassis;
-            IsExpanded = expanded.Contains(chassis.ChassisGuid);
-            Rows = CircuitTreeProjection.BuildRows(board, chassis, actions);
+            IsExpanded = isExpanded;
+            Rows = rows;
             EditCommand = new RelayCommand(() => actions.EditChassis(board, chassis));
             BulkEditCommand = new RelayCommand(() => actions.BulkEditChassis(board, chassis));
             ClearCommand = new RelayCommand(() => actions.ClearChassis(chassis));

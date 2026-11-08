@@ -117,7 +117,7 @@ public class CircuitTreeProjectionTests
         Assert.Equal(("edit-row", row), (actions.Action, actions.Target));
     }
 
-    private sealed class RecordingActions : ICircuitTreeActions
+    internal sealed class RecordingActions : ICircuitTreeActions
     {
         public string Action { get; private set; } = string.Empty;
         public object? Target { get; private set; }

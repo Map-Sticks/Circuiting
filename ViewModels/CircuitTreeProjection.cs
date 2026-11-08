@@ -76,6 +76,60 @@ namespace Circuiting.ViewModels
             return boards.Select(board => new BoardTreeNode(board, actions, expanded)).ToList();
         }
 
+        /// <summary>
+        /// Builds only the boards, chassis and circuit rows that match <paramref name="search"/>.
+        /// A matching board or chassis keeps all of its contents; otherwise only rows holding a
+        /// matching circuit (including every pole of a multi-pole circuit) are kept. Ancestors of
+        /// matches are expanded; matched boards' chassis keep their <paramref name="expanded"/> state.
+        /// </summary>
+        public static List<BoardTreeNode> Build(IEnumerable<BoardData> boards, ICircuitTreeActions actions,
+            ISet<Guid> expanded, CircuitSearch search, out int matchCount)
+        {
+            matchCount = 0;
+            if (!search.IsActive) return Build(boards, actions, expanded);
+            var nodes = new List<BoardTreeNode>();
+            var matchedCircuits = new HashSet<CircuitData>();
+            foreach (BoardData board in boards)
+            {
+                if (search.MatchesBoard(board))
+                {
+                    matchCount++;
+                    nodes.Add(new BoardTreeNode(board, actions, expanded) { IsExpanded = true, IsSearchMatch = true });
+                    continue;
+                }
+                var chassisNodes = new List<ChassisTreeNode>();
+                foreach (ChassisData chassis in board.Chassis)
+                {
+                    if (search.MatchesChassis(chassis))
+                    {
+                        matchCount++;
+                        chassisNodes.Add(new ChassisTreeNode(board, chassis, actions, expanded) { IsSearchMatch = true });
+                        continue;
+                    }
+                    var rows = new List<CircuitRowViewModel>();
+                    foreach (CircuitRowViewModel row in BuildRows(board, chassis, actions))
+                    {
+                        bool left = Matches(row.LeftConsumedInfo?.Parent ?? row.LeftCircuit, search, matchedCircuits);
+                        bool right = Matches(row.RightConsumedInfo?.Parent ?? row.RightCircuit, search, matchedCircuits);
+                        if (!left && !right) continue;
+                        row.IsSearchMatch = true;
+                        rows.Add(row);
+                    }
+                    if (rows.Count > 0) chassisNodes.Add(new ChassisTreeNode(board, chassis, actions, true, rows));
+                }
+                if (chassisNodes.Count > 0) nodes.Add(new BoardTreeNode(board, actions, true, chassisNodes));
+            }
+            matchCount += matchedCircuits.Count;
+            return nodes;
+        }
+
+        private static bool Matches(CircuitData? circuit, CircuitSearch search, HashSet<CircuitData> matched)
+        {
+            if (circuit == null || !search.MatchesCircuit(circuit)) return false;
+            matched.Add(circuit);
+            return true;
+        }
+
         public static List<CircuitRowViewModel> BuildRows(
             BoardData board, ChassisData chassis, ICircuitTreeActions? actions = null)
         {

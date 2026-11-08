@@ -29,5 +29,6 @@
     <Compile Include="../../ViewModels/ChassisFieldOptions.cs" Link="ViewModels/ChassisFieldOptions.cs" />
     <Compile Include="../../ViewModels/CircuitTreeProjection.cs" Link="ViewModels/CircuitTreeProjection.cs" />
     <Compile Include="../../ViewModels/CircuitTreeNodes.cs" Link="ViewModels/CircuitTreeNodes.cs" />
+    <Compile Include="../../ViewModels/CircuitSearch.cs" Link="ViewModels/CircuitSearch.cs" />
   </ItemGroup>
 </Project>
