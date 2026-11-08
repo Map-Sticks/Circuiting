@@ -38,7 +38,7 @@
             <TextBox x:Name="NameBox" Text="DB-L1" FontSize="13" Padding="6,4" Margin="0,0,0,12"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1">
+        <StackPanel x:Name="TemplatePanel" Grid.Row="1">
             <TextBlock Text="Base on:" Style="{StaticResource Label}"/>
             <ComboBox x:Name="TemplateCombo" FontSize="13" Padding="6,4" Margin="0,0,0,4"
                       DisplayMemberPath="DisplayName" SelectionChanged="TemplateCombo_SelectionChanged"/>
@@ -98,6 +98,8 @@
         <DockPanel Grid.Row="5" Margin="0,0,0,12">
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                 <Button Content="Edit Chassis..." Style="{StaticResource Secondary}" Click="EditChassis_Click"/>
+                <Button Content="Remove" Style="{StaticResource Secondary}" Click="RemoveChassis_Click"
+                        ToolTip="Remove the selected chassis"/>
                 <Button Content="▲" Style="{StaticResource Secondary}" Click="MoveUp_Click" ToolTip="Move up"/>
                 <Button Content="▼" Style="{StaticResource Secondary}" Click="MoveDown_Click" ToolTip="Move down"/>
             </StackPanel>
@@ -107,7 +109,7 @@
 
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Width="80" Padding="0,4" Margin="0,0,8,0" IsCancel="True"/>
-            <Button Content="Add" Width="80" Padding="0,4" Background="#0078D4"
+            <Button x:Name="ConfirmButton" Content="Add" Width="80" Padding="0,4" Background="#0078D4"
                     Foreground="White" BorderThickness="0" IsDefault="True" Click="Add_Click"/>
         </StackPanel>
     </Grid>

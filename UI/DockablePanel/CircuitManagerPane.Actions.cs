@@ -267,6 +267,25 @@ namespace Circuiting.UI.DockablePanel
         private static int CalculateSuggestedStart(BoardData board) =>
             BoardSetup.NextStartingCircuit(board.Chassis, board.Chassis.Count);
 
+        private void OnEditBoard(BoardData board)
+        {
+            if (!IsCurrentTarget(board)) return;
+            ProjectData project = _project;
+            var dialog = new AddBoardDialog(_boards, editing: board);
+            dialog.ShowDialog();
+            if (!dialog.Confirmed || dialog.Result == null) return;
+            if (!IsCurrentProject(project) || !IsCurrentTarget(board)) return;
+            string? error = BoardSetup.ValidateLayout(dialog.Result, board);
+            if (error != null)
+            {
+                MessageBox.Show(error, "Invalid Board Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            PushUndoState();
+            _boards[_boards.IndexOf(board)] = dialog.Result;
+            SaveAndRefresh();
+        }
+
         private void OnDuplicateBoard(BoardData board)
         {
             if (!IsCurrentTarget(board)) return;
@@ -490,6 +509,7 @@ namespace Circuiting.UI.DockablePanel
         void ICircuitTreeActions.EditChassis(BoardData board, ChassisData chassis) => OnEditChassis(board, chassis);
         void ICircuitTreeActions.BulkEditChassis(BoardData board, ChassisData chassis) => OnBulkEditChassis(board, chassis);
         void ICircuitTreeActions.ClearChassis(ChassisData chassis) => OnClearAllCircuits(chassis);
+        void ICircuitTreeActions.EditBoard(BoardData board) => OnEditBoard(board);
         void ICircuitTreeActions.DuplicateBoard(BoardData board) => OnDuplicateBoard(board);
         void ICircuitTreeActions.DeleteChassis(BoardData board, ChassisData chassis) => OnDeleteChassis(board, chassis);
         void ICircuitTreeActions.EditRow(CircuitRowViewModel row) => OnEditRow(row);

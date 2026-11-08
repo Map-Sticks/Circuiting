@@ -52,6 +52,15 @@ the chassis dialog offers an explicit option to remove it.
   chassis (name, start number, phase labels) by double-clicking it in the list,
   and reorder with ▲/▼. **Base on** copies the supply and chassis setup of an
   existing board; circuits are never copied.
+- **Edit Board...** in a board's context menu opens the same dialog for an
+  existing board: rename it (names stay unique), change supply, add, remove,
+  reorder or edit chassis, and apply quick setup. Existing circuits keep their
+  positions, details and fixtures and are relabelled. Saving is refused if a
+  circuit would no longer fit, a three-phase chassis remains on a single-phase
+  board, or a multi-pole circuit would end up on a single-phase chassis or off
+  its first phase. Removing chassis that hold circuits asks for confirmation and
+  deletes their circuits and fixture assignments on save. Cancel discards all
+  changes; Save is a single Undo step.
 - **Duplicate Board...** in a board's context menu creates 1-50 copies of its
   supply and chassis setup without circuits or fixture assignments. Names are
   numbered from a prefix and start number (e.g. `DB-L1` suggests `DB-L2`,
@@ -211,3 +220,6 @@ Run on a disposable copy of a model in each supported Revit version:
 10. Add boards with several chassis, quick setup, per-chassis edits, both
     supplies, and **Base on** an existing board. Duplicate boards with several
     copies and confirm unique names, no copied circuits, and Undo/Redo.
+11. Edit a board with circuits and fixtures: rename, reorder, add and remove
+    chassis, change poles/prefix/supply, and confirm labels and fixture
+    references update, invalid layouts are refused, and Undo restores them.

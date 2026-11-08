@@ -11,23 +11,49 @@ namespace Circuiting.UI.Dialogs
         private static readonly BoardData NewSetup = new BoardData { DisplayName = "— New setup —" };
 
         private readonly IReadOnlyList<string> _existingNames;
+        private readonly BoardData? _editing;
         private List<ChassisData> _chassis = new List<ChassisData>();
         private bool _updating = true;
 
-        public AddBoardDialog(IReadOnlyList<BoardData>? existingBoards = null, BoardData? template = null)
+        /// <param name="editing">
+        /// When set, the dialog edits a deep copy of this board, keeping its identity, circuits and fixtures.
+        /// </param>
+        public AddBoardDialog(IReadOnlyList<BoardData>? existingBoards = null, BoardData? template = null,
+            BoardData? editing = null)
         {
             InitializeComponent();
+            _editing = editing;
             IReadOnlyList<BoardData> boards = existingBoards ?? Array.Empty<BoardData>();
-            _existingNames = boards.Select(b => b.DisplayName).ToList();
-            (string prefix, string start) = BoardSetup.SuggestNumbering(
-                boards.Count > 0 ? boards[boards.Count - 1].DisplayName : "DB-L0", _existingNames);
-            NameBox.Text = prefix + start;
+            _existingNames = boards.Where(b => !ReferenceEquals(b, editing)).Select(b => b.DisplayName).ToList();
+            if (editing != null)
+            {
+                Title = $"Edit Board — {editing.DisplayName}";
+                ConfirmButton.Content = "Save";
+                TemplatePanel.Visibility = System.Windows.Visibility.Collapsed;
+                NameBox.Text = editing.DisplayName;
+                _chassis = BoardSetup.Clone(editing).Chassis;
+                bool threePhase = editing.Supply == SupplyType.ThreePhase;
+                if (_chassis.Count == 0) BoardSetup.Resize(_chassis, 1, threePhase);
+                ThreePhaseRadio.IsChecked = threePhase;
+                SinglePhaseRadio.IsChecked = !threePhase;
+                ChassisCountCombo.ItemsSource =
+                    Enumerable.Range(1, Math.Max(BoardSetup.MaxChassis, _chassis.Count)).ToList();
+                LoadQuickSetup();
+                _updating = false;
+                RefreshList();
+            }
+            else
+            {
+                (string prefix, string start) = BoardSetup.SuggestNumbering(
+                    boards.Count > 0 ? boards[boards.Count - 1].DisplayName : "DB-L0", _existingNames);
+                NameBox.Text = prefix + start;
+                ChassisCountCombo.ItemsSource = Enumerable.Range(1, BoardSetup.MaxChassis).ToList();
+                TemplateCombo.ItemsSource = new[] { NewSetup }.Concat(boards).ToList();
+                _updating = false;
+                TemplateCombo.SelectedItem = template != null && boards.Contains(template) ? template : NewSetup;
+            }
             NameBox.SelectAll();
             NameBox.Focus();
-            ChassisCountCombo.ItemsSource = Enumerable.Range(1, BoardSetup.MaxChassis).ToList();
-            TemplateCombo.ItemsSource = new[] { NewSetup }.Concat(boards).ToList();
-            _updating = false;
-            TemplateCombo.SelectedItem = template != null && boards.Contains(template) ? template : NewSetup;
         }
 
         public BoardData? Result { get; private set; }
@@ -93,6 +119,11 @@ namespace Circuiting.UI.Dialogs
         private void ChassisCountCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_updating || ChassisCountCombo.SelectedItem is not int count) return;
+            if (count < _chassis.Count && !ConfirmRemoval(_chassis.Skip(count).ToList()))
+            {
+                SetCountSilently();
+                return;
+            }
             try
             {
                 BoardSetup.Resize(_chassis, count, IsThreePhase);
@@ -143,6 +174,44 @@ namespace Circuiting.UI.Dialogs
             RefreshList(index);
         }
 
+        private void RemoveChassis_Click(object sender, RoutedEventArgs e)
+        {
+            int index = ChassisList.SelectedIndex;
+            if (index < 0 || index >= _chassis.Count)
+            {
+                MessageBox.Show("Select a chassis to remove.", "Remove Chassis");
+                return;
+            }
+            if (_chassis.Count == 1)
+            {
+                MessageBox.Show("A board needs at least one chassis.", "Remove Chassis");
+                return;
+            }
+            if (!ConfirmRemoval(new[] { _chassis[index] })) return;
+            _chassis.RemoveAt(index);
+            SetCountSilently();
+            RefreshList(Math.Min(index, _chassis.Count - 1));
+        }
+
+        private bool ConfirmRemoval(IReadOnlyCollection<ChassisData> removed)
+        {
+            int circuits = removed.Sum(c => c.Circuits.Count);
+            if (circuits == 0) return true;
+            int fixtures = removed.Sum(c => c.Circuits.Sum(circuit => circuit.Fixtures.Count));
+            string names = string.Join(", ", removed.Select(c => $"'{c.Name}'"));
+            return MessageBox.Show(
+                $"Remove chassis {names}?\n\n{circuits} circuit(s) and {fixtures} fixture assignment(s) " +
+                "will be deleted when you save.", "Remove Chassis",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        }
+
+        private void SetCountSilently()
+        {
+            _updating = true;
+            ChassisCountCombo.SelectedItem = _chassis.Count;
+            _updating = false;
+        }
+
         private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveSelected(-1);
         private void MoveDown_Click(object sender, RoutedEventArgs e) => MoveSelected(1);
 
@@ -175,7 +244,8 @@ namespace Circuiting.UI.Dialogs
             {
                 range = "invalid: " + ex.Message;
             }
-            return $"{index + 1,2}. {chassis.Name,-12} {phase} {chassis.MaxPoles,2}p  {range}";
+            string circuits = chassis.Circuits.Count == 0 ? string.Empty : $"  ({chassis.Circuits.Count} circuits)";
+            return $"{index + 1,2}. {chassis.Name,-12} {phase} {chassis.MaxPoles,2}p  {range}{circuits}";
         }
 
         private void Add_Click(object sender, RoutedEventArgs e)
@@ -189,28 +259,21 @@ namespace Circuiting.UI.Dialogs
             if (BoardSetup.NameExists(_existingNames, name))
             {
                 MessageBox.Show($"A board named '{name}' already exists. Choose a unique name.",
-                    "Add Board", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             var board = new BoardData
             {
-                BoardGuid = Guid.NewGuid(),
+                BoardGuid = _editing?.BoardGuid ?? Guid.NewGuid(),
                 DisplayName = name,
                 Supply = IsThreePhase ? SupplyType.ThreePhase : SupplyType.SinglePhase,
                 Chassis = _chassis
             };
-            try
+            string? error = BoardSetup.ValidateLayout(board, _editing);
+            if (error != null)
             {
-                foreach (ChassisData chassis in board.Chassis)
-                {
-                    if (chassis.PhaseLabels.Count >= 3 && !IsThreePhase)
-                        throw new ArgumentException($"Chassis '{chassis.Name}' is three phase but the board is single phase.");
-                    CircuitLabelCalculator.Calculate(board, chassis);
-                }
-            }
-            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
-            {
-                MessageBox.Show(ex.Message, "Invalid Chassis", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(error, "Invalid Board Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
+                RefreshList(ChassisList.SelectedIndex);
                 return;
             }
             Result = board;

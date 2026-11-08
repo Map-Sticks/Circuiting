@@ -20,6 +20,7 @@
             <StackPanel Orientation="Horizontal" Loaded="TreeHeader_Loaded">
                 <StackPanel.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="⚙️  Edit Board..." Command="{Binding EditCommand}"/>
                         <MenuItem Header="➕  Add Chassis" Command="{Binding AddChassisCommand}"/>
                         <Separator/>
                         <MenuItem Header="✏️  Rename Board" Command="{Binding RenameCommand}"/>

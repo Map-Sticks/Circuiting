@@ -1,5 +1,6 @@
 using System.Globalization;
 using Circuiting.Models;
+using Newtonsoft.Json;
 
 namespace Circuiting.Services
 {
@@ -106,6 +107,71 @@ namespace Circuiting.Services
                     item.ShowPhaseLabel = true;
                 }
             }
+        }
+
+        private static readonly JsonSerializerSettings CloneSettings =
+            new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
+
+        /// <summary>Deep copy that keeps all identities, circuits and fixtures.</summary>
+        public static BoardData Clone(BoardData board) =>
+            JsonConvert.DeserializeObject<BoardData>(JsonConvert.SerializeObject(board, CloneSettings), CloneSettings)
+            ?? throw new InvalidOperationException("Unable to copy the board data.");
+
+        /// <summary>
+        /// Checks that every circuit still fits its chassis in <paramref name="candidate"/> and refreshes
+        /// circuit labels. Multi-pole circuits must sit on a three-phase chassis and start on its first
+        /// phase, unless they already broke that rule in <paramref name="original"/>.
+        /// Returns an error message, or null when the layout is valid.
+        /// </summary>
+        public static string? ValidateLayout(BoardData candidate, BoardData? original = null)
+        {
+            bool threePhase = candidate.Supply == SupplyType.ThreePhase;
+            HashSet<Guid> alreadyInvalid = original == null ? new HashSet<Guid>() : InvalidMultiPoleCircuits(original);
+            try
+            {
+                foreach (ChassisData chassis in candidate.Chassis)
+                {
+                    if (!threePhase && chassis.PhaseLabels.Count >= 3)
+                        return $"Chassis '{chassis.Name}' is three phase but the board is single phase.";
+                    CircuitLayout.ValidateAndUpdate(candidate, chassis);
+                }
+            }
+            catch (Exception ex) when (ex is System.IO.InvalidDataException || ex is ArgumentException ||
+                                       ex is OverflowException)
+            {
+                return ex.Message + "\n\nMove or delete the affected circuits before changing this layout.";
+            }
+            HashSet<Guid> invalid = InvalidMultiPoleCircuits(candidate);
+            CircuitData? circuit = candidate.Chassis.SelectMany(c => c.Circuits).FirstOrDefault(c =>
+                invalid.Contains(c.CircuitGuid) && !alreadyInvalid.Contains(c.CircuitGuid));
+            return circuit == null ? null :
+                $"Multi-pole circuit '{circuit.DisplayLabel}' must be on a three-phase chassis and start on " +
+                "its first phase. Change it to single-pole or move it before changing this layout.";
+        }
+
+        private static HashSet<Guid> InvalidMultiPoleCircuits(BoardData board)
+        {
+            var invalid = new HashSet<Guid>();
+            foreach (ChassisData chassis in board.Chassis)
+            {
+                List<PoleAssignment> assignments;
+                try
+                {
+                    assignments = CircuitLabelCalculator.Calculate(board, chassis);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
+                {
+                    continue;
+                }
+                foreach (CircuitData circuit in chassis.Circuits.Where(c => c.Poles > 1))
+                {
+                    PoleAssignment? start = assignments.FirstOrDefault(a => a.PoleIndex == circuit.PoleIndex);
+                    if (chassis.PhaseLabels.Count < 3 || start == null ||
+                        !CircuitLayout.IsValidMultiPoleStart(start, chassis, circuit.Poles, assignments))
+                        invalid.Add(circuit.CircuitGuid);
+                }
+            }
+            return invalid;
         }
 
         public static bool NameExists(IEnumerable<string> names, string name) =>

@@ -103,6 +103,8 @@ public class CircuitTreeProjectionTests
 
         node.RenameCommand.Execute(null);
         Assert.Equal(("rename", board), (actions.Action, actions.Target));
+        node.EditCommand.Execute(null);
+        Assert.Equal(("edit-board", board), (actions.Action, actions.Target));
         node.DuplicateCommand.Execute(null);
         Assert.Equal(("duplicate-board", board), (actions.Action, actions.Target));
         chassisNode.EditCommand.Execute(null);
@@ -127,6 +129,7 @@ public class CircuitTreeProjectionTests
         public void AddChassis(BoardData board) => Record("add-chassis", board);
         public void RenameBoard(BoardData board) => Record("rename", board);
         public void DeleteBoard(BoardData board) => Record("delete-board", board);
+        public void EditBoard(BoardData board) => Record("edit-board", board);
         public void DuplicateBoard(BoardData board) => Record("duplicate-board", board);
         public void EditChassis(BoardData board, ChassisData chassis) => Record("edit-chassis", chassis);
         public void BulkEditChassis(BoardData board, ChassisData chassis) => Record("bulk-edit", chassis);

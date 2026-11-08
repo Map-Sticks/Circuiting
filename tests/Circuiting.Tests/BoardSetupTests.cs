@@ -146,4 +146,101 @@ public class BoardSetupTests
         Assert.True(BoardSetup.NameExists(new[] { " DB-L1 " }, "db-l1"));
         Assert.False(BoardSetup.NameExists(new[] { "DB-L1" }, "DB-L10"));
     }
+
+    private static (BoardData Board, CircuitData Single, CircuitData Multi) EditableBoard()
+    {
+        var first = CircuitLayoutTests.Chassis(12);
+        var second = CircuitLayoutTests.Chassis(12);
+        second.Name = "Second";
+        second.StartingCircuit = 13;
+        var single = new CircuitData
+        {
+            CircuitGuid = Guid.NewGuid(), PoleIndex = 10, Description = "Lights",
+            Fixtures = new List<CircuitedFixture> { new() { FixtureGuid = Guid.NewGuid() } }
+        };
+        var multi = new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 0, Poles = 3 };
+        first.Circuits.Add(single);
+        second.Circuits.Add(multi);
+        var board = CircuitLayoutTests.Board(first, second);
+        Assert.Null(BoardSetup.ValidateLayout(board));
+        return (board, single, multi);
+    }
+
+    [Fact]
+    public void CloneKeepsIdentitiesCircuitsAndFixturesWithoutSharingState()
+    {
+        var (board, single, _) = EditableBoard();
+
+        var clone = BoardSetup.Clone(board);
+
+        Assert.Equal(board.BoardGuid, clone.BoardGuid);
+        Assert.Equal(board.Chassis.Select(c => c.ChassisGuid), clone.Chassis.Select(c => c.ChassisGuid));
+        var copied = clone.Chassis[0].Circuits.Single();
+        Assert.Equal(single.CircuitGuid, copied.CircuitGuid);
+        Assert.Equal(single.Fixtures[0].FixtureGuid, copied.Fixtures.Single().FixtureGuid);
+        Assert.NotSame(single, copied);
+        clone.Chassis.RemoveAt(1);
+        clone.Chassis[0].PhaseLabels.Clear();
+        Assert.Equal(2, board.Chassis.Count);
+        Assert.Equal(3, board.Chassis[0].PhaseLabels.Count);
+    }
+
+    [Fact]
+    public void ValidLayoutEditsRelabelExistingCircuits()
+    {
+        var (board, single, _) = EditableBoard();
+        var edited = BoardSetup.Clone(board);
+        edited.DisplayName = "Renamed";
+        edited.Chassis[0].Prefix = "L";
+        edited.Chassis[0].Separator = "-";
+        edited.Chassis[0].MaxPoles = 18;
+        (edited.Chassis[0], edited.Chassis[1]) = (edited.Chassis[1], edited.Chassis[0]);
+
+        Assert.Null(BoardSetup.ValidateLayout(edited, board));
+
+        var moved = edited.Chassis[1].Circuits.Single();
+        Assert.Equal(single.CircuitGuid, moved.CircuitGuid);
+        Assert.StartsWith("L-", moved.DisplayLabel);
+        Assert.Equal(CircuitLabelCalculator.Calculate(edited, edited.Chassis[1])[10].DisplayLabel, moved.DisplayLabel);
+    }
+
+    [Fact]
+    public void ShrinkingPolesBelowExistingCircuitsIsRejected()
+    {
+        var (board, _, _) = EditableBoard();
+        var edited = BoardSetup.Clone(board);
+        edited.Chassis[0].MaxPoles = 6;
+
+        Assert.Contains("outside chassis", BoardSetup.ValidateLayout(edited, board));
+    }
+
+    [Fact]
+    public void SinglePhaseSupplyRejectsThreePhaseChassisAndMultiPoleCircuits()
+    {
+        var (board, _, _) = EditableBoard();
+        var edited = BoardSetup.Clone(board);
+        edited.Supply = SupplyType.SinglePhase;
+        Assert.Contains("three phase", BoardSetup.ValidateLayout(edited, board));
+
+        BoardSetup.ApplySupply(edited.Chassis, threePhase: false);
+        Assert.Contains("Multi-pole", BoardSetup.ValidateLayout(edited, board));
+
+        edited.Chassis[1].Circuits.Single().Poles = 1;
+        Assert.Null(BoardSetup.ValidateLayout(edited, board));
+    }
+
+    [Fact]
+    public void PhaseShiftThatMisalignsMultiPoleCircuitsIsRejectedButExistingProblemsAreTolerated()
+    {
+        var (board, _, multi) = EditableBoard();
+        var edited = BoardSetup.Clone(board);
+        edited.Chassis[0].MaxPoles = 8;
+        edited.Chassis[0].Circuits.Clear();
+        edited.Chassis[1].ContinuePhaseFromPrevious = true;
+        Assert.Contains("Multi-pole", BoardSetup.ValidateLayout(edited, board));
+
+        var alreadyBroken = BoardSetup.Clone(edited);
+        Assert.Null(BoardSetup.ValidateLayout(BoardSetup.Clone(alreadyBroken), alreadyBroken));
+        Assert.Equal(multi.CircuitGuid, alreadyBroken.Chassis[1].Circuits.Single().CircuitGuid);
+    }
 }

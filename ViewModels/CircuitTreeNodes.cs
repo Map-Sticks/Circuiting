@@ -10,6 +10,7 @@ namespace Circuiting.ViewModels
         void AddChassis(BoardData board);
         void RenameBoard(BoardData board);
         void DeleteBoard(BoardData board);
+        void EditBoard(BoardData board);
         void DuplicateBoard(BoardData board);
         void EditChassis(BoardData board, ChassisData chassis);
         void BulkEditChassis(BoardData board, ChassisData chassis);
@@ -52,6 +53,7 @@ namespace Circuiting.ViewModels
             Chassis = chassis;
             AddChassisCommand = new RelayCommand(() => actions.AddChassis(board));
             RenameCommand = new RelayCommand(() => actions.RenameBoard(board));
+            EditCommand = new RelayCommand(() => actions.EditBoard(board));
             DuplicateCommand = new RelayCommand(() => actions.DuplicateBoard(board));
             DeleteCommand = new RelayCommand(() => actions.DeleteBoard(board));
         }
@@ -62,6 +64,7 @@ namespace Circuiting.ViewModels
         public List<ChassisTreeNode> Chassis { get; }
         public IRelayCommand AddChassisCommand { get; }
         public IRelayCommand RenameCommand { get; }
+        public IRelayCommand EditCommand { get; }
         public IRelayCommand DuplicateCommand { get; }
         public IRelayCommand DeleteCommand { get; }
     }
