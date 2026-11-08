@@ -1,0 +1,14 @@
+<RevitAddIns>
+	<AddIn Type="Application">
+		<Name>Circuiting</Name>
+		<Assembly>DBCircuitManager\DBCircuitManager.dll</Assembly>
+		<AddInId>5BC1951E-F890-4BDA-89A6-92617C06435F</AddInId>
+		<FullClassName>Circuiting.Application</FullClassName>
+		<VendorId>Development</VendorId>
+		<VendorDescription></VendorDescription>
+	</AddIn>
+	<ManifestSettings>
+		<UseRevitContext>False</UseRevitContext>
+		<ContextName>Circuiting</ContextName>
+	</ManifestSettings>
+</RevitAddIns>
