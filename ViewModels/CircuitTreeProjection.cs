@@ -35,6 +35,7 @@ namespace Circuiting.ViewModels
         public string Description { get; private set; } = string.Empty;
         public string Protection { get; private set; } = string.Empty;
         public string Breaker { get; private set; } = string.Empty;
+        /// <summary>True for unoccupied positions (spare or space); they are shown greyed out.</summary>
         public bool IsSpare { get; private set; }
 
         internal static CircuitSideViewModel Create(
@@ -43,21 +44,38 @@ namespace Circuiting.ViewModels
             var side = new CircuitSideViewModel { Label = pole.DisplayLabel };
             if (consumed != null)
             {
-                if (!consumed.IsDescriptionRow) return side;
                 circuit = consumed.Parent;
-                side.Description = circuit.Description ?? string.Empty;
+                side.IsSpare = !CircuitLayout.IsOccupied(circuit);
+                if (!consumed.IsDescriptionRow) return side;
             }
             else if (circuit == null)
             {
-                side.Description = "Spare";
+                side.Description = "Space";
                 side.IsSpare = true;
                 return side;
             }
+            else if (circuit.Poles > 1)
+            {
+                side.IsSpare = !CircuitLayout.IsOccupied(circuit);
+                return side;
+            }
+
+            if (CircuitLayout.IsOccupied(circuit))
+            {
+                string description = string.IsNullOrWhiteSpace(circuit.Description)
+                    ? "(no description)" : circuit.Description;
+                side.Description = $"{description} [{circuit.Fixtures.Count}]";
+            }
             else
             {
-                if (circuit.Poles > 1) return side;
-                side.Description = string.IsNullOrEmpty(circuit.Description) ? "Spare" : circuit.Description;
-                if (circuit.Fixtures.Count > 0) side.Description += $" [{circuit.Fixtures.Count}]";
+                side.IsSpare = true;
+                if (!CircuitLayout.HasDetails(circuit))
+                {
+                    side.Description = "Space";
+                    return side;
+                }
+                side.Description = string.IsNullOrWhiteSpace(circuit.Description)
+                    ? "Spare" : $"Spare — {circuit.Description}";
             }
 
             side.Breaker = circuit.BreakerSize ?? string.Empty;

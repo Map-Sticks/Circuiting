@@ -33,16 +33,19 @@ namespace Circuiting.UI.DockablePanel
                 if (ReferenceEquals(chassis, targetChassis) && pole.PoleIndex == circuit.PoleIndex) continue;
                 if (CircuitLayout.GetMoveError(chassis, circuit, targetBoard, targetChassis, pole.PoleIndex) != null)
                     continue;
+                bool replacesSpare = CircuitLayout.GetSparesReplacedByMove(circuit, targetChassis, pole.PoleIndex)
+                    .Any(CircuitLayout.HasDetails);
                 destinations.Add(new CircuitMoveDestination
                 {
                     Board = targetBoard, Chassis = targetChassis, PoleIndex = pole.PoleIndex,
                     DisplayName = $"{targetBoard.DisplayName} / {targetChassis.Name} / " +
-                        $"{pole.DisplayLabel} ({pole.Side}, row {pole.RowIndex + 1})"
+                        $"{pole.DisplayLabel} ({pole.Side}, row {pole.RowIndex + 1})" +
+                        (replacesSpare ? " — replaces spare" : string.Empty)
                 });
             }
             if (destinations.Count == 0)
             {
-                MessageBox.Show("There are no free positions that fit this circuit.",
+                MessageBox.Show("There are no spare or space positions that fit this circuit.",
                     "Move Circuit", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -64,6 +67,17 @@ namespace Circuiting.UI.DockablePanel
                 return false;
             }
             if (ReferenceEquals(chassis, targetChassis) && circuit.PoleIndex == poleIndex) return false;
+            ProjectData project = _project;
+            List<CircuitData> replaced = CircuitLayout.GetSparesReplacedByMove(circuit, targetChassis, poleIndex)
+                .Where(CircuitLayout.HasDetails).ToList();
+            if (replaced.Count > 0)
+            {
+                MessageBoxResult confirm = MessageBox.Show(
+                    $"Moving {circuit.DisplayLabel} will replace these spare positions and delete their details:\n" +
+                    string.Join("\n", replaced.Select(c => "  • " + CircuitLayout.SpareSummary(c))) +
+                    "\n\nContinue?", "Replace Spare", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes || !IsCurrentProject(project)) return false;
+            }
             PushUndoState();
             CircuitLayout.Move(chassis, circuit, targetBoard, targetChassis, poleIndex);
             SaveAndRefresh();
@@ -135,8 +149,11 @@ namespace Circuiting.UI.DockablePanel
             PoleAssignment position = PositionAt(grid, row, e.GetPosition(grid));
             string? error = CircuitLayout.GetMoveError(drag.Chassis, drag.Circuit,
                 row.Board, row.Chassis, position.PoleIndex);
+            bool replacesSpare = error == null && CircuitLayout.GetSparesReplacedByMove(drag.Circuit, row.Chassis,
+                position.PoleIndex).Any(CircuitLayout.HasDetails);
             StatusLabel.Text = error ?? $"Move to {row.Board.DisplayName} / {row.Chassis.Name} / " +
-                $"{position.DisplayLabel} ({position.Side}, row {position.RowIndex + 1})";
+                $"{position.DisplayLabel} ({position.Side}, row {position.RowIndex + 1})" +
+                (replacesSpare ? " — replaces spare" : string.Empty);
             if (error == null) e.Effects = DragDropEffects.Move;
         }
 

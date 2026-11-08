@@ -8,7 +8,7 @@
             <TextBlock Text="Apply to:" Foreground="White" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6"/>
             <RadioButton x:Name="AllRadio" Content="All circuits" Foreground="White" FontSize="13"
                          IsChecked="True" Margin="0,0,0,3"/>
-            <RadioButton x:Name="SpareRadio" Content="Spare circuits only" Foreground="White" FontSize="13" Margin="0,0,0,3"/>
+            <RadioButton x:Name="SpareRadio" Content="Spaces only (no saved details or fixtures)" Foreground="White" FontSize="13" Margin="0,0,0,3"/>
             <RadioButton x:Name="LeftRadio" Content="Left side only" Foreground="White" FontSize="13" Margin="0,0,0,3"/>
             <RadioButton x:Name="RightRadio" Content="Right side only" Foreground="White" FontSize="13" Margin="0,0,0,16"/>
             <CheckBox x:Name="BreakerCheck" Content="Breaker Size:" Foreground="White" FontSize="13" Margin="0,0,0,4"/>

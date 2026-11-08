@@ -74,11 +74,24 @@ the chassis dialog offers an explicit option to remove it.
   shown, with every pole of a multi-pole circuit. Matches are highlighted and
   counted in the status bar. Enter applies immediately, Esc or ✕ clears and
   restores the previous expand/collapse state. Adding a board clears the search.
+- A position is **occupied** only when model elements are assigned to it.
+  Unoccupied positions are greyed out: **Space** when nothing is saved, or
+  **Spare — <description>** (with breaker and protection) when details are
+  saved. Adding a description, breaker or protection keeps a position spare.
+- **Convert to Three-Phase Circuit** in a row's context menu (three-phase
+  chassis only) merges the R, W and B positions on that side into one
+  three-pole circuit; right-click any of the three. The circuit keeps the
+  details of the position with fixtures, or else the right-clicked position;
+  the other spares are deleted after confirmation. It is refused if more than
+  one position has fixtures or the group would run past the chassis. Creating a
+  multi-pole circuit in the row editor also replaces spares on its poles.
 - **Move Left/Right** in a circuit row's context menu opens a destination picker.
   Alternatively, hold **Alt** and drag a circuit with the left mouse button onto
   the desired left or right position. Collapsed boards and chassis expand when
   dragged over. Moves work across chassis and boards and preserve circuit identity,
-  details, and fixtures. Occupied positions are never overwritten or swapped.
+  details, and fixtures. Positions with fixtures assigned are never overwritten
+  or swapped; moving onto a spare replaces it after confirming that its saved
+  details will be deleted.
   All poles must fit; multi-pole destinations must start on the first phase of
   a three-phase chassis. Dragging a consumed pole moves its parent circuit.
   Moves update fixture references in the save transaction and support panel
@@ -223,3 +236,8 @@ Run on a disposable copy of a model in each supported Revit version:
 11. Edit a board with circuits and fixtures: rename, reorder, add and remove
     chassis, change poles/prefix/supply, and confirm labels and fixture
     references update, invalid layouts are refused, and Undo restores them.
+12. Add details without fixtures and confirm the position shows greyed
+    **Spare — ...**; clear them and confirm **Space**. Convert to three-phase
+    from each of R, W and B (spaces, spares, and one position with fixtures),
+    confirm two fixture positions are refused, and move a circuit onto a spare
+    (picker and Alt-drag) confirming the replacement prompt and Undo.

@@ -19,6 +19,7 @@ namespace Circuiting.ViewModels
         void EditRow(CircuitRowViewModel row);
         void DeleteCircuit(ChassisData chassis, CircuitData circuit);
         void MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit);
+        void ConvertToThreePhase(BoardData board, ChassisData chassis, PoleAssignment pole);
         void AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
         void AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole);
         void SelectFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
@@ -119,7 +120,12 @@ namespace Circuiting.ViewModels
             string suffix = consumed == null ? string.Empty : $" (multi-pole from {label})";
             DeleteLabel = $"🗑️  Delete {side} — {label}{suffix}";
             MoveLabel = $"Move {side} - {label}{suffix}";
-            AssignLabel = $"📌  Assign Fixtures — {label}" + (circuit == null ? " (spare)" : string.Empty);
+            AssignLabel = $"📌  Assign Fixtures — {label}" + (circuit == null ? " (space)"
+                : CircuitLayout.IsOccupied(circuit) ? string.Empty : " (spare)");
+            ConvertLabel = $"3φ  Convert to Three-Phase Circuit — {pole.DisplayLabel}";
+            CanConvertToThreePhase = chassis.PhaseLabels.Count >= CircuitLayout.ThreePhasePoles &&
+                pole.PhaseIndex < CircuitLayout.ThreePhasePoles && circuit?.Poles != CircuitLayout.ThreePhasePoles;
+            ConvertCommand = new RelayCommand(() => actions.ConvertToThreePhase(board, chassis, pole));
             SelectLabel = $"👁️  Select in Model — {label} ({circuit?.Fixtures.Count ?? 0})";
             RemoveLabel = $"🔗  Pick Fixtures to Remove — {label}";
             HasCircuit = circuit != null;
@@ -139,6 +145,9 @@ namespace Circuiting.ViewModels
         public string AssignLabel { get; }
         public string SelectLabel { get; }
         public string RemoveLabel { get; }
+        public string ConvertLabel { get; }
+        public bool CanConvertToThreePhase { get; }
+        public IRelayCommand ConvertCommand { get; }
         public bool HasCircuit { get; }
         public bool HasFixtures { get; }
         public IRelayCommand AssignCommand { get; }

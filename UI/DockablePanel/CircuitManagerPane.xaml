@@ -58,6 +58,13 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Margin" Value="2,1"/>
         </Style>
+        <Style x:Key="CircuitValueStyle" TargetType="TextBlock" BasedOn="{StaticResource CircuitCellStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSpare}" Value="True">
+                    <Setter Property="Foreground" Value="#646464"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="CircuitDescriptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CircuitCellStyle}">
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="TextTrimming" Value="None"/>
@@ -80,6 +87,8 @@
                         <MenuItem Header="{Binding LeftCommands.DeleteLabel}" Command="{Binding LeftCommands.DeleteCommand}"
                                   Visibility="{Binding LeftCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding LeftCommands.AssignLabel}" Command="{Binding LeftCommands.AssignCommand}"/>
+                        <MenuItem Header="{Binding LeftCommands.ConvertLabel}" Command="{Binding LeftCommands.ConvertCommand}"
+                                  Visibility="{Binding LeftCommands.CanConvertToThreePhase, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding LeftCommands.SelectLabel}" Command="{Binding LeftCommands.SelectCommand}"
                                   Visibility="{Binding LeftCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding LeftCommands.RemoveLabel}" Command="{Binding LeftCommands.RemoveCommand}"
@@ -90,6 +99,8 @@
                         <MenuItem Header="{Binding RightCommands.DeleteLabel}" Command="{Binding RightCommands.DeleteCommand}"
                                   Visibility="{Binding RightCommands.HasCircuit, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.AssignLabel}" Command="{Binding RightCommands.AssignCommand}"/>
+                        <MenuItem Header="{Binding RightCommands.ConvertLabel}" Command="{Binding RightCommands.ConvertCommand}"
+                                  Visibility="{Binding RightCommands.CanConvertToThreePhase, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.SelectLabel}" Command="{Binding RightCommands.SelectCommand}"
                                   Visibility="{Binding RightCommands.HasFixtures, Converter={StaticResource BooleanToVisibility}}"/>
                         <MenuItem Header="{Binding RightCommands.RemoveLabel}" Command="{Binding RightCommands.RemoveCommand}"
@@ -111,11 +122,15 @@
                            Foreground="#C8C8C8" Style="{StaticResource CircuitCellStyle}"/>
                 <TextBlock Grid.Column="1" DataContext="{Binding LeftDisplay}" Text="{Binding Description}"
                            Style="{StaticResource CircuitDescriptionStyle}"/>
-                <TextBlock Grid.Column="2" Text="{Binding LeftDisplay.Protection}" Style="{StaticResource CircuitCellStyle}"/>
-                <TextBlock Grid.Column="3" Text="{Binding LeftDisplay.Breaker}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="2" DataContext="{Binding LeftDisplay}" Text="{Binding Protection}"
+                           Style="{StaticResource CircuitValueStyle}"/>
+                <TextBlock Grid.Column="3" DataContext="{Binding LeftDisplay}" Text="{Binding Breaker}"
+                           Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="4" Text="│" Foreground="#646464" Style="{StaticResource CircuitCellStyle}"/>
-                <TextBlock Grid.Column="5" Text="{Binding RightDisplay.Breaker}" Style="{StaticResource CircuitCellStyle}"/>
-                <TextBlock Grid.Column="6" Text="{Binding RightDisplay.Protection}" Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="5" DataContext="{Binding RightDisplay}" Text="{Binding Breaker}"
+                           Style="{StaticResource CircuitValueStyle}"/>
+                <TextBlock Grid.Column="6" DataContext="{Binding RightDisplay}" Text="{Binding Protection}"
+                           Style="{StaticResource CircuitValueStyle}"/>
                 <TextBlock Grid.Column="7" DataContext="{Binding RightDisplay}" Text="{Binding Description}"
                            Style="{StaticResource CircuitDescriptionStyle}"/>
                 <TextBlock Grid.Column="8" Text="{Binding RightDisplay.Label}"

@@ -68,12 +68,15 @@ public class CircuitTreeProjectionTests
         Assert.Equal("30mA RCBO", rows[0].LeftDisplay.Protection);
         Assert.Equal("16A", rows[0].LeftDisplay.Breaker);
         Assert.Equal(string.Empty, rows[0].RightDisplay.Description);
-        Assert.Equal("Supply", rows[1].RightDisplay.Description);
+        Assert.Equal("Spare — Supply", rows[1].RightDisplay.Description);
+        Assert.True(rows[1].RightDisplay.IsSpare);
+        Assert.True(rows[0].RightDisplay.IsSpare);
+        Assert.False(rows[0].LeftDisplay.IsSpare);
         Assert.Equal("MCB", rows[1].RightDisplay.Protection);
         Assert.Equal("32A", rows[1].RightDisplay.Breaker);
         Assert.Equal(string.Empty, rows[2].RightDisplay.Description);
         Assert.True(rows[1].LeftDisplay.IsSpare);
-        Assert.Equal("Spare", rows[1].LeftDisplay.Description);
+        Assert.Equal("Space", rows[1].LeftDisplay.Description);
     }
 
     [Fact]
@@ -138,6 +141,8 @@ public class CircuitTreeProjectionTests
         public void EditRow(CircuitRowViewModel row) => Record("edit-row", row);
         public void DeleteCircuit(ChassisData chassis, CircuitData circuit) => Record("delete-circuit", circuit);
         public void MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit) => Record("move-circuit", circuit);
+        public void ConvertToThreePhase(BoardData board, ChassisData chassis, PoleAssignment pole) =>
+            Record("convert-3ph", pole);
         public void AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit) => Record("assign", circuit);
         public void AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole) =>
             Record("assign-spare", pole);

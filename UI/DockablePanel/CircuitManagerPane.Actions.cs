@@ -79,16 +79,36 @@ namespace Circuiting.UI.DockablePanel
             }
 
             if (!changed) return;
+            var replacedSpares = new List<CircuitData>();
+            foreach (var update in updates)
+            {
+                if (update.Result == null || update.Result.Poles < 2) continue;
+                List<int> poles;
+                try { poles = CircuitLayout.PolesOf(update.Result).ToList(); }
+                catch (System.IO.InvalidDataException) { continue; }
+                replacedSpares.AddRange(CircuitLayout.GetSparesAt(candidates, poles, update.Result)
+                    .Where(spare => !ReferenceEquals(spare, updates[0].Result) &&
+                        !ReferenceEquals(spare, updates[1].Result) && !replacedSpares.Contains(spare)));
+            }
+            List<CircuitData> discarded = replacedSpares.Where(CircuitLayout.HasDetails).ToList();
+            candidates.RemoveAll(replacedSpares.Contains);
             try
             {
                 CircuitLayout.ValidateAndUpdate(tag.Board, tag.Chassis, candidates);
             }
             catch (System.IO.InvalidDataException ex)
             {
-                MessageBox.Show(ex.Message + "\n\nFree any occupied poles before creating a multi-pole circuit.",
+                MessageBox.Show(ex.Message + "\n\nMove or delete the circuits with fixtures assigned on those " +
+                    "positions before creating a multi-pole circuit.",
                     "Invalid Circuit Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
+            if (discarded.Count > 0 && MessageBox.Show(
+                    "The multi-pole circuit will replace these spare positions and delete their details:\n" +
+                    string.Join("\n", discarded.Select(c => "  • " + CircuitLayout.SpareSummary(c))) +
+                    "\n\nContinue?", "Replace Spares", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes) return;
+            if (!IsCurrentProject(project)) return;
 
             PushUndoState();
             tag.Chassis.Circuits = candidates;
@@ -113,6 +133,49 @@ namespace Circuiting.UI.DockablePanel
             target.Circuits.Add(newCircuit);
             QueueRequest(RevitAction.AssignFixtures, ProjectDataSerializer.Serialize(desired),
                 board.BoardGuid, chassis.ChassisGuid, newCircuit.CircuitGuid);
+        }
+
+        // ─── Convert To Three-Phase ──────────────────────────
+
+        private void OnConvertToThreePhase(BoardData board, ChassisData chassis, PoleAssignment pole)
+        {
+            if (!IsCurrentTarget(board, chassis)) return;
+            ProjectData project = _project;
+            string? error = CircuitLayout.GetThreePhaseConversion(board, chassis, pole.PoleIndex,
+                out ThreePhaseConversion? plan);
+            if (error != null || plan == null)
+            {
+                MessageBox.Show(error, "Cannot Convert to Three-Phase", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            List<CircuitData> discarded = plan.Replaced.Where(CircuitLayout.HasDetails).ToList();
+            if (discarded.Count > 0)
+            {
+                string kept = plan.Kept == null ? "a new empty circuit"
+                    : CircuitLayout.IsOccupied(plan.Kept) ? $"{plan.Kept.DisplayLabel} (it has fixtures assigned)"
+                    : plan.Kept.DisplayLabel;
+                MessageBoxResult confirm = MessageBox.Show(
+                    $"The three-phase circuit will keep the details of {kept}.\n\n" +
+                    "The details saved on these spare positions will be deleted:\n" +
+                    string.Join("\n", discarded.Select(c => "  • " + CircuitLayout.SpareSummary(c))) +
+                    "\n\nContinue?",
+                    "Convert to Three-Phase", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes || !IsCurrentProject(project)) return;
+            }
+
+            string snapshot = ProjectDataSerializer.Serialize(_project);
+            try
+            {
+                CircuitLayout.ConvertToThreePhase(board, chassis, pole.PoleIndex);
+            }
+            catch (System.IO.InvalidDataException ex)
+            {
+                MessageBox.Show(ex.Message, "Cannot Convert to Three-Phase", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            _history.Push(snapshot);
+            SaveAndRefresh();
         }
 
         // ─── Delete Single Circuit ───────────────────────────
@@ -173,7 +236,7 @@ namespace Circuiting.UI.DockablePanel
                 MessageBoxResult confirm = MessageBox.Show(
                     $"Delete circuit {circuit.DisplayLabel} " +
                     $"({circuit.Description})?\n\n" +
-                    "This will clear all data and make it spare.",
+                    "This will clear all data and make it a space.",
                     "Delete Circuit",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
@@ -442,11 +505,7 @@ namespace Circuiting.UI.DockablePanel
 
                 if (dialog.Scope == BulkApplyScope.SpareOnly
                     && existing != null
-                    && (!string.IsNullOrEmpty(existing.Description) ||
-                        !string.IsNullOrEmpty(existing.BreakerSize) ||
-                        !string.IsNullOrEmpty(existing.ProtectionType) ||
-                        !string.IsNullOrEmpty(existing.EarthLeakage) ||
-                        existing.Fixtures.Count > 0)) continue;
+                    && (CircuitLayout.HasDetails(existing) || CircuitLayout.IsOccupied(existing))) continue;
 
                 if (existing == null)
                 {
@@ -516,6 +575,8 @@ namespace Circuiting.UI.DockablePanel
         void ICircuitTreeActions.DeleteCircuit(ChassisData chassis, CircuitData circuit) => OnDeleteCircuit(chassis, circuit);
         void ICircuitTreeActions.MoveCircuit(BoardData board, ChassisData chassis, CircuitData circuit) =>
             OnMoveCircuit(board, chassis, circuit);
+        void ICircuitTreeActions.ConvertToThreePhase(BoardData board, ChassisData chassis, PoleAssignment pole) =>
+            OnConvertToThreePhase(board, chassis, pole);
         void ICircuitTreeActions.AssignFixtures(BoardData board, ChassisData chassis, CircuitData circuit) =>
             OnAssignFixtures(board, chassis, circuit);
         void ICircuitTreeActions.AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole) =>

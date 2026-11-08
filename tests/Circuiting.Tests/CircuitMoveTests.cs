@@ -84,7 +84,7 @@ public class CircuitMoveTests
         var board = CircuitLayoutTests.Board(source, target);
         var circuit = new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 0, DisplayLabel = "Original" };
         source.Circuits.Add(circuit);
-        var occupied = new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 1, Poles = 3 };
+        var occupied = new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 1, Poles = 3, Fixtures = { new CircuitedFixture() } };
         target.Circuits.Add(occupied);
 
         Assert.Throws<InvalidDataException>(() => CircuitLayout.Move(source, circuit, board, target, position));
@@ -103,7 +103,7 @@ public class CircuitMoveTests
         var board = CircuitLayoutTests.Board(source, target);
         var circuit = new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 0, Poles = 3 };
         source.Circuits.Add(circuit);
-        target.Circuits.Add(new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 5 });
+        target.Circuits.Add(new CircuitData { CircuitGuid = Guid.NewGuid(), PoleIndex = 5, Fixtures = { new CircuitedFixture() } });
 
         Assert.Throws<InvalidDataException>(() => CircuitLayout.Move(source, circuit, board, target, 1));
         Assert.Same(circuit, Assert.Single(source.Circuits));
