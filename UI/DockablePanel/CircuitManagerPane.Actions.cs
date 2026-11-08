@@ -562,6 +562,34 @@ namespace Circuiting.UI.DockablePanel
                 board.BoardGuid, chassis.ChassisGuid, circuit.CircuitGuid);
         }
 
+        private void OnShowFixture(BoardData board, ChassisData chassis, CircuitData circuit,
+            CircuitedFixture fixture, bool zoom)
+        {
+            if (!IsCurrentTarget(board, chassis, circuit)) return;
+            if (!circuit.Fixtures.Contains(fixture))
+            {
+                MessageBox.Show("The element is no longer assigned to this circuit. Reopen the menu and try again.",
+                    "Circuit Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            QueueRequest(zoom ? RevitAction.ZoomToFixture : RevitAction.SelectFixture,
+                ProjectDataSerializer.Serialize(_project), board.BoardGuid, chassis.ChassisGuid,
+                circuit.CircuitGuid, fixtureGuid: fixture.FixtureGuid);
+        }
+
+        private void FixtureRow_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2 || sender is not FrameworkElement element ||
+                element.DataContext is not FixtureTreeNode fixture || fixture.ZoomCommand == null) return;
+            e.Handled = true;
+            fixture.ZoomCommand.Execute(null);
+        }
+
+        void ICircuitTreeActions.ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit,
+            CircuitedFixture fixture, bool zoom) => OnShowFixture(board, chassis, circuit, fixture, zoom);
+        FixtureDetails? ICircuitTreeActions.GetFixtureDetails(CircuitedFixture fixture) =>
+            _fixtureDetails.TryGetValue(fixture.FixtureGuid, out FixtureDetails? details) ? details : null;
+
         void ICircuitTreeActions.AddChassis(BoardData board) => OnAddChassis(board);
         void ICircuitTreeActions.RenameBoard(BoardData board) => OnRenameBoard(board);
         void ICircuitTreeActions.DeleteBoard(BoardData board) => OnDeleteBoard(board);

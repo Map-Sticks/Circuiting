@@ -74,7 +74,59 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        <DataTemplate DataType="{x:Type viewModels:CircuitRowViewModel}">
+        <Style x:Key="FixtureButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+        </Style>
+        <Style x:Key="FixtureNameStyle" TargetType="TextBlock" BasedOn="{StaticResource CircuitCellStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                    <Setter Property="Foreground" Value="#E08080"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate DataType="{x:Type viewModels:FixtureTreeNode}">
+            <Grid Background="Transparent" Loaded="TreeHeader_Loaded" ToolTip="{Binding ToolTip}"
+                  MouseLeftButtonDown="FixtureRow_MouseLeftButtonDown">
+                <Grid.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="{Binding ZoomLabel}" Command="{Binding ZoomCommand}"/>
+                        <MenuItem Header="{Binding SelectLabel}" Command="{Binding SelectCommand}"/>
+                    </ContextMenu>
+                </Grid.ContextMenu>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="55"/>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="170"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="◀" Foreground="#646464" Style="{StaticResource CircuitCellStyle}"
+                           Visibility="{Binding IsLeft, Converter={StaticResource BooleanToVisibility}}"/>
+                <TextBlock Grid.Column="0" Text="▶" Foreground="#646464" Style="{StaticResource CircuitCellStyle}"
+                           Visibility="{Binding IsRight, Converter={StaticResource BooleanToVisibility}}"/>
+                <TextBlock Grid.Column="1" Text="{Binding Circuit.DisplayLabel}" Foreground="#C8C8C8"
+                           Style="{StaticResource CircuitCellStyle}"/>
+                <TextBlock Grid.Column="2" Text="{Binding Name}" Style="{StaticResource FixtureNameStyle}"/>
+                <TextBlock Grid.Column="3" Text="{Binding Space}" Foreground="#8FB8DE"
+                           Style="{StaticResource CircuitCellStyle}"/>
+                <StackPanel Grid.Column="4" Orientation="Horizontal">
+                    <Button Content="🔍" Command="{Binding ZoomCommand}" Style="{StaticResource FixtureButtonStyle}"
+                            ToolTip="Zoom to the element in the model"/>
+                    <Button Content="☑" Command="{Binding SelectCommand}" Style="{StaticResource FixtureButtonStyle}"
+                            ToolTip="Select the element without zooming, to edit its properties"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type viewModels:CircuitRowViewModel}"
+                                  ItemsSource="{Binding Fixtures}"
+                                  ItemContainerStyle="{StaticResource CircuitTreeItemStyle}">
             <Grid Background="Transparent" Loaded="TreeHeader_Loaded" MouseLeftButtonDown="CircuitRow_MouseLeftButtonDown"
                   PreviewMouseLeftButtonDown="CircuitRow_PreviewMouseLeftButtonDown"
                   PreviewMouseLeftButtonUp="CircuitRow_PreviewMouseLeftButtonUp"
@@ -136,7 +188,7 @@
                 <TextBlock Grid.Column="8" Text="{Binding RightDisplay.Label}"
                            Foreground="#C8C8C8" Style="{StaticResource CircuitCellStyle}"/>
             </Grid>
-        </DataTemplate>
+        </HierarchicalDataTemplate>
     </UserControl.Resources>
 
     <Grid>

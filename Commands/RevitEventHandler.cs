@@ -17,15 +17,19 @@ namespace Circuiting.Commands
         ResolveChanges,
         AssignFixtures,
         SelectFixtures,
-        RemoveFixtures
+        RemoveFixtures,
+        ZoomToFixture,
+        SelectFixture
     }
 
     public sealed class RevitRequest
     {
         public RevitRequest(RevitAction action, Document document, string expectedJson, string desiredJson,
             Action<RevitResult> completed, Guid boardGuid = default, Guid chassisGuid = default,
-            Guid circuitGuid = default, IEnumerable<long>? addedIds = null, IEnumerable<long>? deletedIds = null)
+            Guid circuitGuid = default, IEnumerable<long>? addedIds = null, IEnumerable<long>? deletedIds = null,
+            Guid fixtureGuid = default)
         {
+            FixtureGuid = fixtureGuid;
             Action = action;
             Document = document;
             ExpectedJson = expectedJson;
@@ -45,6 +49,7 @@ namespace Circuiting.Commands
         public Guid BoardGuid { get; }
         public Guid ChassisGuid { get; }
         public Guid CircuitGuid { get; }
+        public Guid FixtureGuid { get; }
         public IReadOnlyList<long> AddedIds { get; }
         public IReadOnlyList<long> DeletedIds { get; }
         public Action<RevitResult> Completed { get; }
@@ -166,6 +171,10 @@ namespace Circuiting.Commands
                     return SelectFixtures(uidoc, desired, request);
                 case RevitAction.RemoveFixtures:
                     return RemoveFixtures(uidoc, previous, desired, request);
+                case RevitAction.ZoomToFixture:
+                    return SelectFixture(uidoc, desired, request, zoom: true);
+                case RevitAction.SelectFixture:
+                    return SelectFixture(uidoc, desired, request, zoom: false);
                 default:
                     throw new InvalidOperationException($"Unsupported circuit action: {request.Action}.");
             }
@@ -438,6 +447,29 @@ namespace Circuiting.Commands
             uidoc.Selection.SetElementIds(ids);
             uidoc.ShowElements(ids);
             return new RevitResult { Success = true, Message = $"Selected {ids.Count} fixture(s)." };
+        }
+
+        private static RevitResult SelectFixture(UIDocument uidoc, ProjectData project, RevitRequest request, bool zoom)
+        {
+            CircuitData circuit = FindTarget(project, request).Circuit;
+            CircuitedFixture fixture = circuit.Fixtures.FirstOrDefault(f => f.FixtureGuid == request.FixtureGuid)
+                ?? throw new InvalidOperationException("The selected element is no longer assigned to this circuit.");
+            Element? element = RevitElementIds.Resolve(uidoc.Document, fixture);
+            if (element == null)
+                return new RevitResult
+                {
+                    Success = true,
+                    Message = $"The element is not in the model. Run Validate Model to repair {circuit.DisplayLabel}."
+                };
+
+            var ids = new List<ElementId> { element.Id };
+            uidoc.Selection.SetElementIds(ids);
+            if (zoom) uidoc.ShowElements(ids);
+            return new RevitResult
+            {
+                Success = true,
+                Message = $"{(zoom ? "Zoomed to" : "Selected")} {element.Name} ({circuit.DisplayLabel})."
+            };
         }
 
         private static RevitResult RemoveFixtures(

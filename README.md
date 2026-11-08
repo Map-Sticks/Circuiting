@@ -110,6 +110,14 @@ the chassis dialog offers an explicit option to remove it.
   assignment data must be reconciled with **Validate Model** first.
 - **Select in Model** selects existing circuit fixtures. **Pick Fixtures to
   Remove** removes only the elements selected in that pick session.
+- **Circuited elements**: expand a circuit row (▸) to list the elements on
+  its left and right circuits, sorted by MEP space, with family/type, mark and
+  space. Each element has two buttons, also in its right-click menu:
+  **🔍 Zoom to Element** selects it and zooms the active view to it;
+  **☑ Select Element** only selects it, so you can edit it in the Properties
+  palette without the view moving. Double-clicking an element zooms to it.
+  Space details are read live from the model when the project loads and after
+  each model change. Elements no longer in the model are shown in red.
 - Deleting a circuit can unassign its fixtures or move them to another
   existing circuit. Deleting a chassis or board, clearing a chassis, and
   **Clear All** unassign their referenced fixtures. **Clear All** requires two
@@ -251,3 +259,8 @@ Run on a disposable copy of a model in each supported Revit version:
 13. Move circuits with the picker across many boards: filter boards, switch
     chassis, filter positions, toggle **Available only**, and confirm
     unavailable positions cannot be chosen and the move lands where selected.
+14. Expand circuit rows with assigned elements: check the MEP space column
+    (including elements outside any space), hover for the tooltip, use Zoom
+    and Select from the buttons and context menu, double-click to zoom, move
+    an element to another space and confirm the space updates, and confirm
+    expanded rows stay expanded after edits.

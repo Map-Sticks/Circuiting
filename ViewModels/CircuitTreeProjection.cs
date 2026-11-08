@@ -25,6 +25,9 @@ namespace Circuiting.ViewModels
         public CircuitSideCommands? LeftCommands { get; set; }
         public CircuitSideCommands? RightCommands { get; set; }
         public IRelayCommand? EditCommand { get; set; }
+        /// <summary>Circuited elements of the left then right circuit started on this row.</summary>
+        public List<FixtureTreeNode> Fixtures { get; set; } = new List<FixtureTreeNode>();
+        public bool HasFixtures => Fixtures.Count > 0;
         public bool LeftConsumed => LeftConsumedInfo != null;
         public bool RightConsumed => RightConsumedInfo != null;
     }
@@ -125,7 +128,7 @@ namespace Circuiting.ViewModels
                         continue;
                     }
                     var rows = new List<CircuitRowViewModel>();
-                    foreach (CircuitRowViewModel row in BuildRows(board, chassis, actions))
+                    foreach (CircuitRowViewModel row in BuildRows(board, chassis, actions, expanded))
                     {
                         bool left = Matches(row.LeftConsumedInfo?.Parent ?? row.LeftCircuit, search, matchedCircuits);
                         bool right = Matches(row.RightConsumedInfo?.Parent ?? row.RightCircuit, search, matchedCircuits);
@@ -148,8 +151,12 @@ namespace Circuiting.ViewModels
             return true;
         }
 
+        /// <summary>
+        /// Builds the rows of a chassis. A row with circuited elements has them as children and is expanded
+        /// when the GUID of its left or right circuit is in <paramref name="expanded"/>.
+        /// </summary>
         public static List<CircuitRowViewModel> BuildRows(
-            BoardData board, ChassisData chassis, ICircuitTreeActions? actions = null)
+            BoardData board, ChassisData chassis, ICircuitTreeActions? actions = null, ISet<Guid>? expanded = null)
         {
             List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(board, chassis);
             Dictionary<int, CircuitData> consumed = CircuitLayout.GetConsumedPoles(chassis);
@@ -182,6 +189,11 @@ namespace Circuiting.ViewModels
                     LeftDisplay = CircuitSideViewModel.Create(left, leftStart, leftInfo),
                     RightDisplay = CircuitSideViewModel.Create(right, rightStart, rightInfo)
                 };
+                rowModel.Fixtures = FixtureNodes(board, chassis, leftStart, Side.Left, actions)
+                    .Concat(FixtureNodes(board, chassis, rightStart, Side.Right, actions)).ToList();
+                rowModel.IsExpanded = rowModel.HasFixtures && expanded != null &&
+                    ((leftStart != null && expanded.Contains(leftStart.CircuitGuid)) ||
+                     (rightStart != null && expanded.Contains(rightStart.CircuitGuid)));
                 if (actions != null)
                 {
                     rowModel.LeftCommands = new CircuitSideCommands(board, chassis, left, leftStart, leftInfo, actions);
@@ -191,6 +203,17 @@ namespace Circuiting.ViewModels
                 rows.Add(rowModel);
             }
             return rows;
+        }
+
+        private static IEnumerable<FixtureTreeNode> FixtureNodes(BoardData board, ChassisData chassis,
+            CircuitData? circuit, Side side, ICircuitTreeActions? actions)
+        {
+            if (circuit == null) return Enumerable.Empty<FixtureTreeNode>();
+            return circuit.Fixtures
+                .Select(fixture => new FixtureTreeNode(board, chassis, circuit, fixture, side, actions))
+                .OrderBy(node => node.Space, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(node => node.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
         }
 
         private static ConsumedPoleInfo? Info(CircuitData? parent, int poleIndex) =>

@@ -33,6 +33,7 @@ namespace Circuiting.UI.DockablePanel
         private readonly DocumentSessionCache<Document> _documentStates =
             new DocumentSessionCache<Document>(document => document.IsValidObject);
         private List<BoardTreeNode> _treeNodes = new List<BoardTreeNode>();
+        private Dictionary<Guid, FixtureDetails> _fixtureDetails = new Dictionary<Guid, FixtureDetails>();
         public bool HasOpened { get; private set; }
 
         private static readonly JsonSerializerSettings _jsonSettings =
@@ -78,7 +79,9 @@ namespace Circuiting.UI.DockablePanel
                     _pendingDeletedIds.Clear();
                     _pendingReload = false;
                 }
-                SetProject(document, BoardRepository.LoadProjectData(document));
+                ProjectData project = BoardRepository.LoadProjectData(document);
+                _fixtureDetails = ReadFixtureDetails(document, project);
+                SetProject(document, project);
                 return true;
             }
             catch (Exception ex)
@@ -155,6 +158,7 @@ namespace Circuiting.UI.DockablePanel
             IsEnabled = false;
             BoardTree.ItemsSource = null;
             _treeNodes.Clear();
+            _fixtureDetails = new Dictionary<Guid, FixtureDetails>();
             if (_expandedBeforeSearch != null) _expandedBeforeSearch = new HashSet<Guid>();
         }
 
@@ -271,7 +275,7 @@ namespace Circuiting.UI.DockablePanel
 
         private void QueueRequest(RevitAction action, string desired, Guid boardGuid = default,
             Guid chassisGuid = default, Guid circuitGuid = default,
-            IEnumerable<long>? addedIds = null, IEnumerable<long>? deletedIds = null)
+            IEnumerable<long>? addedIds = null, IEnumerable<long>? deletedIds = null, Guid fixtureGuid = default)
         {
             if (!_dataLoaded || _document == null || _requestPending)
                 throw new InvalidOperationException("The circuit panel is not ready for another Revit request.");
@@ -282,7 +286,7 @@ namespace Circuiting.UI.DockablePanel
             {
                 var request = new RevitRequest(action, document, _committedJson, desired,
                     result => CompleteRequest(document, action, result), boardGuid, chassisGuid, circuitGuid,
-                    addedIds, deletedIds);
+                    addedIds, deletedIds, fixtureGuid);
                 Circuiting.Application.EventHandler.Enqueue(request, Circuiting.Application.RevitEvent);
                 StatusLabel.Text = action == RevitAction.Save ? "Saving..." : "Waiting for Revit...";
             }
@@ -323,6 +327,7 @@ namespace Circuiting.UI.DockablePanel
                 }
                 _project = result.Project;
                 _committedJson = ProjectDataSerializer.Serialize(_project);
+                _fixtureDetails = ReadFixtureDetails(document, _project);
                 ApplyResolutionMode();
                 RefreshTree();
             }
@@ -444,7 +449,12 @@ namespace Circuiting.UI.DockablePanel
 
         private HashSet<Guid> GetExpandedGuids()
         {
-            if (_expandedBeforeSearch != null) return new HashSet<Guid>(_expandedBeforeSearch);
+            if (_expandedBeforeSearch != null)
+            {
+                var remembered = new HashSet<Guid>(_expandedBeforeSearch);
+                AddExpandedRows(remembered);
+                return remembered;
+            }
             var expanded = new HashSet<Guid>();
             foreach (BoardTreeNode board in _treeNodes)
             {
@@ -452,7 +462,41 @@ namespace Circuiting.UI.DockablePanel
                 foreach (ChassisTreeNode chassis in board.Chassis)
                     if (chassis.IsExpanded) expanded.Add(chassis.Chassis.ChassisGuid);
             }
+            AddExpandedRows(expanded);
             return expanded;
+        }
+
+        /// <summary>Expanded circuit rows (showing circuited elements) are remembered by their circuit GUIDs.</summary>
+        private void AddExpandedRows(HashSet<Guid> expanded)
+        {
+            foreach (BoardTreeNode board in _treeNodes)
+            foreach (ChassisTreeNode chassis in board.Chassis)
+            foreach (CircuitRowViewModel row in chassis.Rows)
+            {
+                if (row.LeftCircuit != null && row.LeftCircuit.Fixtures.Count > 0)
+                    SetExpanded(expanded, row.LeftCircuit.CircuitGuid, row.IsExpanded);
+                if (row.RightCircuit != null && row.RightCircuit.Fixtures.Count > 0)
+                    SetExpanded(expanded, row.RightCircuit.CircuitGuid, row.IsExpanded);
+            }
+        }
+
+        private static void SetExpanded(HashSet<Guid> expanded, Guid guid, bool isExpanded)
+        {
+            if (isExpanded) expanded.Add(guid);
+            else expanded.Remove(guid);
+        }
+
+        private static Dictionary<Guid, FixtureDetails> ReadFixtureDetails(Document document, ProjectData project)
+        {
+            try
+            {
+                return FixtureDetailsReader.Read(document, project);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Could not read circuited element details: {0}", ex);
+                return new Dictionary<Guid, FixtureDetails>();
+            }
         }
 
         private void RestoreExpandedState(HashSet<Guid> expanded)
@@ -466,7 +510,13 @@ namespace Circuiting.UI.DockablePanel
             {
                 board.IsExpanded = expanded.Contains(board.Board.BoardGuid);
                 foreach (ChassisTreeNode chassis in board.Chassis)
+                {
                     chassis.IsExpanded = expanded.Contains(chassis.Chassis.ChassisGuid);
+                    foreach (CircuitRowViewModel row in chassis.Rows)
+                        row.IsExpanded = row.HasFixtures &&
+                            ((row.LeftCircuit != null && expanded.Contains(row.LeftCircuit.CircuitGuid)) ||
+                             (row.RightCircuit != null && expanded.Contains(row.RightCircuit.CircuitGuid)));
+                }
             }
         }
 

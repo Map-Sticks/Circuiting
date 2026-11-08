@@ -24,6 +24,8 @@ namespace Circuiting.ViewModels
         void AssignFixturesToSpare(BoardData board, ChassisData chassis, PoleAssignment pole);
         void SelectFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
         void RemoveFixtures(BoardData board, ChassisData chassis, CircuitData circuit);
+        void ShowFixture(BoardData board, ChassisData chassis, CircuitData circuit, CircuitedFixture fixture, bool zoom);
+        FixtureDetails? GetFixtureDetails(CircuitedFixture fixture);
     }
 
     public abstract class CircuitTreeNode : ObservableObject
@@ -75,7 +77,7 @@ namespace Circuiting.ViewModels
         internal ChassisTreeNode(BoardData board, ChassisData chassis,
             ICircuitTreeActions actions, ISet<Guid> expanded)
             : this(board, chassis, actions, expanded.Contains(chassis.ChassisGuid),
-                CircuitTreeProjection.BuildRows(board, chassis, actions))
+                CircuitTreeProjection.BuildRows(board, chassis, actions, expanded))
         {
         }
 
@@ -155,5 +157,66 @@ namespace Circuiting.ViewModels
         public IRelayCommand? MoveCommand { get; }
         public IRelayCommand? SelectCommand { get; }
         public IRelayCommand? RemoveCommand { get; }
+    }
+
+    public sealed class FixtureTreeNode : CircuitTreeNode
+    {
+        internal FixtureTreeNode(BoardData board, ChassisData chassis, CircuitData circuit,
+            CircuitedFixture fixture, Side side, ICircuitTreeActions? actions)
+        {
+            Circuit = circuit;
+            Fixture = fixture;
+            Side = side;
+            FixtureDetails? details = actions?.GetFixtureDetails(fixture);
+            IsMissing = details != null && !details.Found;
+            if (details == null || !details.Found)
+            {
+                Name = string.IsNullOrWhiteSpace(fixture.FamilyName) ? "(unnamed element)" : fixture.FamilyName;
+                if (IsMissing) Name += "  ⚠ not found in model";
+                Space = string.IsNullOrWhiteSpace(fixture.RoomName) ? "Space unknown" : $"Room {fixture.RoomName}";
+            }
+            else
+            {
+                Name = details.FamilyName.Length == 0 || details.FamilyName == details.TypeName
+                    ? details.TypeName : $"{details.FamilyName} : {details.TypeName}";
+                if (details.Mark.Length > 0) Name += $"  [{details.Mark}]";
+                Space = details.Space.Length > 0 ? details.Space : "No space";
+            }
+
+            var tip = new List<string> { $"{circuit.DisplayLabel} — {Name}" };
+            if (details?.Found == true)
+            {
+                if (details.Category.Length > 0) tip.Add($"Category: {details.Category}");
+                tip.Add($"MEP space: {(details.Space.Length > 0 ? details.Space : "none")}");
+                if (details.RoomName.Length > 0) tip.Add($"Room: {details.RoomName}");
+                if (details.LevelName.Length > 0) tip.Add($"Level: {details.LevelName}");
+                tip.Add($"Element ID: {details.ElementId}");
+            }
+            else if (IsMissing)
+            {
+                tip.Add("The element could not be found in the model. Run Validate Model to repair the assignment.");
+            }
+            tip.Add("Double-click to zoom to the element.");
+            ToolTip = string.Join(Environment.NewLine, tip);
+            ZoomLabel = $"🔍  Zoom to Element — {Name}";
+            SelectLabel = $"☑️  Select Element (edit properties) — {Name}";
+            if (actions == null) return;
+            ZoomCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, true));
+            SelectCommand = new RelayCommand(() => actions.ShowFixture(board, chassis, circuit, fixture, false));
+        }
+
+        public CircuitData Circuit { get; }
+        public CircuitedFixture Fixture { get; }
+        public Side Side { get; }
+        public bool IsLeft => Side == Side.Left;
+        public bool IsRight => Side == Side.Right;
+        public string Name { get; }
+        public string Space { get; }
+        public bool IsMissing { get; }
+        public string ToolTip { get; }
+        public string ZoomLabel { get; }
+        public string SelectLabel { get; }
+        public IRelayCommand? ZoomCommand { get; }
+        public IRelayCommand? SelectCommand { get; }
     }
 }
