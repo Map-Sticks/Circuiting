@@ -46,6 +46,17 @@ poles before changing their chassis to single phase.
 Legacy chassis with one or two phase labels retain that pattern when edited;
 the chassis dialog offers an explicit option to remove it.
 
+- **+ Add Board** sets up the whole board in one dialog: name (must be unique),
+  supply, number of chassis (1-20), and a quick setup of poles, circuit prefix
+  and separator applied to every chassis with consecutive numbering. Edit any
+  chassis (name, start number, phase labels) by double-clicking it in the list,
+  and reorder with ▲/▼. **Base on** copies the supply and chassis setup of an
+  existing board; circuits are never copied.
+- **Duplicate Board...** in a board's context menu creates 1-50 copies of its
+  supply and chassis setup without circuits or fixture assignments. Names are
+  numbered from a prefix and start number (e.g. `DB-L1` suggests `DB-L2`,
+  `DB-L3`, ...; leading zeros set the width) and names already in use are
+  skipped. Copies are inserted after the source board and support Undo.
 - **Search** (below the toolbar, or Ctrl+F) filters the tree as you type. The
   filter list limits it to **DBs**, **Chassis**, or **Circuits**; **All** searches
   every type. Circuits match on label, number, description, breaker, protection
@@ -167,8 +178,7 @@ resolved automatically; the board-level schema and the existing
 inferred from fixture data.
 
 Unresolved work outside the maintenance scope includes load and phase
-balancing, schedule or CSV export/import, parameter/tag write-back, board
-duplication, native electrical-system integration, localization, and a
+balancing, schedule or CSV export/import, parameter/tag write-back, native electrical-system integration, localization, and a
 persistent logging sink. The circuit options remain IEC-oriented.
 
 ## Manual Revit validation checklist
@@ -198,3 +208,6 @@ Run on a disposable copy of a model in each supported Revit version:
 9. Search each scope across several DBs: type in the search box, Ctrl+F,
    Enter, Esc and ✕. Edit, move and assign from filtered rows, switch
    documents while searching, then clear and confirm expansion is restored.
+10. Add boards with several chassis, quick setup, per-chassis edits, both
+    supplies, and **Base on** an existing board. Duplicate boards with several
+    copies and confirm unique names, no copied circuits, and Undo/Redo.

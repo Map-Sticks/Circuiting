@@ -23,6 +23,7 @@
                         <MenuItem Header="➕  Add Chassis" Command="{Binding AddChassisCommand}"/>
                         <Separator/>
                         <MenuItem Header="✏️  Rename Board" Command="{Binding RenameCommand}"/>
+                        <MenuItem Header="📄  Duplicate Board..." Command="{Binding DuplicateCommand}"/>
                         <MenuItem Header="❌  Delete Board" Command="{Binding DeleteCommand}"/>
                     </ContextMenu>
                 </StackPanel.ContextMenu>

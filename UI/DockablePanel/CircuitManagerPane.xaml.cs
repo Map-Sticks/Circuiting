@@ -507,40 +507,14 @@ namespace Circuiting.UI.DockablePanel
             object sender, RoutedEventArgs e)
         {
             ProjectData project = _project;
-            AddBoardDialog dialog = new AddBoardDialog();
+            var dialog = new AddBoardDialog(_boards);
             dialog.ShowDialog();
-            if (!dialog.Confirmed) return;
+            if (!dialog.Confirmed || dialog.Result == null) return;
             if (!IsCurrentProject(project)) return;
-
-            BoardData board = new BoardData
-            {
-                BoardGuid = Guid.NewGuid(),
-                DisplayName = dialog.BoardName,
-                Supply = dialog.IsThreePhase
-                    ? SupplyType.ThreePhase
-                    : SupplyType.SinglePhase
-            };
-
-            ChassisData defaultChassis = new ChassisData
-            {
-                ChassisGuid = Guid.NewGuid(),
-                Name = "Main",
-                MaxPoles = 24,
-                StartingCircuit = 1,
-                Prefix = string.Empty,
-                Separator = string.Empty,
-                ShowPhaseLabel =
-                    board.Supply == SupplyType.ThreePhase,
-                PhaseLabels =
-                    board.Supply == SupplyType.ThreePhase
-                    ? new List<string> { "R", "W", "B" }
-                    : new List<string>()
-            };
 
             if (_search.IsActive) ClearSearch();
             PushUndoState();
-            board.Chassis.Add(defaultChassis);
-            _boards.Add(board);
+            _boards.Add(dialog.Result);
             SaveAndRefresh();
         }
 

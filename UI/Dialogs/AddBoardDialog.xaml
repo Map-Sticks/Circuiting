@@ -1,19 +1,114 @@
 <Window x:Class="Circuiting.UI.Dialogs.AddBoardDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Add Distribution Board" Width="380" Height="260"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Background="#1E1E1E">
-    <StackPanel Margin="20">
-        <TextBlock Text="Board Name:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
-        <TextBox x:Name="NameBox" Text="DB-L1" FontSize="13" Padding="6,4" Margin="0,0,0,16"/>
-        <TextBlock Text="Supply:" Foreground="White" FontSize="13" Margin="0,0,0,6"/>
-        <RadioButton x:Name="ThreePhaseRadio" Content="3 Phase" Foreground="White"
-                     FontSize="13" IsChecked="True" Margin="0,0,0,4"/>
-        <RadioButton Content="Single Phase" Foreground="White" FontSize="13" Margin="0,0,0,16"/>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        Title="Add Distribution Board" Width="520" Height="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip" Background="#1E1E1E">
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#969696"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="Secondary" TargetType="Button">
+            <Setter Property="Background" Value="#3C3C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Board Name:" Style="{StaticResource Label}"/>
+            <TextBox x:Name="NameBox" Text="DB-L1" FontSize="13" Padding="6,4" Margin="0,0,0,12"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <TextBlock Text="Base on:" Style="{StaticResource Label}"/>
+            <ComboBox x:Name="TemplateCombo" FontSize="13" Padding="6,4" Margin="0,0,0,4"
+                      DisplayMemberPath="DisplayName" SelectionChanged="TemplateCombo_SelectionChanged"/>
+            <TextBlock Text="Copies the supply and chassis setup of an existing board. Circuits are not copied."
+                       Style="{StaticResource Hint}" Margin="0,0,0,12"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Supply:" Style="{StaticResource Label}" Margin="0,0,16,0"/>
+            <RadioButton x:Name="ThreePhaseRadio" Content="3 Phase" Foreground="White" FontSize="13"
+                         IsChecked="True" Margin="0,0,16,0" Checked="Supply_Checked"/>
+            <RadioButton x:Name="SinglePhaseRadio" Content="Single Phase" Foreground="White" FontSize="13"
+                         Checked="Supply_Checked"/>
+        </StackPanel>
+
+        <Border Grid.Row="3" Background="#252525" Padding="10" CornerRadius="4" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Quick setup (all chassis)" Style="{StaticResource Label}" FontWeight="SemiBold"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Chassis:" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <ComboBox x:Name="ChassisCountCombo" Grid.Column="1" Margin="0,0,12,6"
+                              SelectionChanged="ChassisCountCombo_SelectionChanged"/>
+                    <TextBlock Grid.Column="2" Text="Poles each:" Style="{StaticResource Label}"
+                               VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <ComboBox x:Name="PolesCombo" Grid.Column="3" Margin="0,0,0,6"/>
+                    <TextBlock Grid.Row="1" Text="Prefix:" Style="{StaticResource Label}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox x:Name="PrefixBox" Grid.Row="1" Grid.Column="1" Padding="4,2" Margin="0,0,12,0"
+                             ToolTip="Circuit label prefix, e.g. L for L1, L2..."/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Separator:" Style="{StaticResource Label}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="SeparatorCombo" Grid.Row="1" Grid.Column="3">
+                        <ComboBoxItem Content="None" Tag="" IsSelected="True"/>
+                        <ComboBoxItem Content="Dash ( - )" Tag="-"/>
+                        <ComboBoxItem Content="Dot ( . )" Tag="."/>
+                    </ComboBox>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="Apply to all chassis" Style="{StaticResource Secondary}" Click="ApplyAll_Click"
+                            ToolTip="Set poles, prefix and separator on every chassis and number them consecutively"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="4" Text="Chassis (double-click to edit name, start number, phases):"
+                   Style="{StaticResource Label}"/>
+        <DockPanel Grid.Row="5" Margin="0,0,0,12">
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                <Button Content="Edit Chassis..." Style="{StaticResource Secondary}" Click="EditChassis_Click"/>
+                <Button Content="▲" Style="{StaticResource Secondary}" Click="MoveUp_Click" ToolTip="Move up"/>
+                <Button Content="▼" Style="{StaticResource Secondary}" Click="MoveDown_Click" ToolTip="Move down"/>
+            </StackPanel>
+            <ListBox x:Name="ChassisList" Background="#141414" Foreground="White" FontFamily="Consolas"
+                     FontSize="12" BorderBrush="#555555" MouseDoubleClick="ChassisList_MouseDoubleClick"/>
+        </DockPanel>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Width="80" Padding="0,4" Margin="0,0,8,0" IsCancel="True"/>
             <Button Content="Add" Width="80" Padding="0,4" Background="#0078D4"
                     Foreground="White" BorderThickness="0" IsDefault="True" Click="Add_Click"/>
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

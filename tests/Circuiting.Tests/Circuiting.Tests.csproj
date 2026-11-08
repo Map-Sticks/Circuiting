@@ -19,6 +19,7 @@
     <Compile Include="../../Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../Services/CircuitLabelCalculator.cs" Link="Services/CircuitLabelCalculator.cs" />
     <Compile Include="../../Services/CircuitLayout.cs" Link="Services/CircuitLayout.cs" />
+    <Compile Include="../../Services/BoardSetup.cs" Link="Services/BoardSetup.cs" />
     <Compile Include="../../Services/FixtureAssignmentSynchronizer.cs" Link="Services/FixtureAssignmentSynchronizer.cs" />
     <Compile Include="../../Services/FixtureIdentity.cs" Link="Services/FixtureIdentity.cs" />
     <Compile Include="../../Services/FixtureModelValidator.cs" Link="Services/FixtureModelValidator.cs" />

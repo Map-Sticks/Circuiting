@@ -264,14 +264,21 @@ namespace Circuiting.UI.DockablePanel
 
         // ─── Chassis Actions ─────────────────────────────────────
 
-        private int CalculateSuggestedStart(BoardData board)
+        private static int CalculateSuggestedStart(BoardData board) =>
+            BoardSetup.NextStartingCircuit(board.Chassis, board.Chassis.Count);
+
+        private void OnDuplicateBoard(BoardData board)
         {
-            if (board.Chassis.Count == 0) return 1;
-            ChassisData last = board.Chassis[board.Chassis.Count - 1];
-            List<PoleAssignment> assignments = CircuitLabelCalculator.Calculate(board, last);
-            return assignments.Count == 0
-                ? last.StartingCircuit
-                : checked(assignments.Max(a => a.CircuitNumber) + 1);
+            if (!IsCurrentTarget(board)) return;
+            ProjectData project = _project;
+            var dialog = new DuplicateBoardDialog(board, _boards.Select(b => b.DisplayName));
+            if (dialog.ShowDialog() != true || dialog.Names.Count == 0) return;
+            if (!IsCurrentProject(project) || !IsCurrentTarget(board)) return;
+            if (_search.IsActive) ClearSearch();
+            PushUndoState();
+            _boards.InsertRange(_boards.IndexOf(board) + 1,
+                dialog.Names.Select(name => BoardSetup.CopySetup(board, name)));
+            SaveAndRefresh();
         }
 
         private void OnAddChassis(BoardData board)
@@ -483,6 +490,7 @@ namespace Circuiting.UI.DockablePanel
         void ICircuitTreeActions.EditChassis(BoardData board, ChassisData chassis) => OnEditChassis(board, chassis);
         void ICircuitTreeActions.BulkEditChassis(BoardData board, ChassisData chassis) => OnBulkEditChassis(board, chassis);
         void ICircuitTreeActions.ClearChassis(ChassisData chassis) => OnClearAllCircuits(chassis);
+        void ICircuitTreeActions.DuplicateBoard(BoardData board) => OnDuplicateBoard(board);
         void ICircuitTreeActions.DeleteChassis(BoardData board, ChassisData chassis) => OnDeleteChassis(board, chassis);
         void ICircuitTreeActions.EditRow(CircuitRowViewModel row) => OnEditRow(row);
         void ICircuitTreeActions.DeleteCircuit(ChassisData chassis, CircuitData circuit) => OnDeleteCircuit(chassis, circuit);

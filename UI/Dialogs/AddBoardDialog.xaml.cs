@@ -1,27 +1,219 @@
 using System.Windows;
+using System.Windows.Controls;
+using Circuiting.Models;
+using Circuiting.Services;
 
 namespace Circuiting.UI.Dialogs
 {
     public partial class AddBoardDialog : Window
     {
-        public AddBoardDialog()
+        private static readonly int[] StandardPoles = { 6, 12, 18, 24, 30, 36, 42, 48 };
+        private static readonly BoardData NewSetup = new BoardData { DisplayName = "— New setup —" };
+
+        private readonly IReadOnlyList<string> _existingNames;
+        private List<ChassisData> _chassis = new List<ChassisData>();
+        private bool _updating = true;
+
+        public AddBoardDialog(IReadOnlyList<BoardData>? existingBoards = null, BoardData? template = null)
         {
             InitializeComponent();
+            IReadOnlyList<BoardData> boards = existingBoards ?? Array.Empty<BoardData>();
+            _existingNames = boards.Select(b => b.DisplayName).ToList();
+            (string prefix, string start) = BoardSetup.SuggestNumbering(
+                boards.Count > 0 ? boards[boards.Count - 1].DisplayName : "DB-L0", _existingNames);
+            NameBox.Text = prefix + start;
+            NameBox.SelectAll();
+            NameBox.Focus();
+            ChassisCountCombo.ItemsSource = Enumerable.Range(1, BoardSetup.MaxChassis).ToList();
+            TemplateCombo.ItemsSource = new[] { NewSetup }.Concat(boards).ToList();
+            _updating = false;
+            TemplateCombo.SelectedItem = template != null && boards.Contains(template) ? template : NewSetup;
         }
 
-        public string BoardName { get; private set; } = string.Empty;
-        public bool IsThreePhase { get; private set; } = true;
+        public BoardData? Result { get; private set; }
         public bool Confirmed { get; private set; }
+
+        private bool IsThreePhase => ThreePhaseRadio.IsChecked == true;
+
+        private void TemplateCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updating || TemplateCombo.SelectedItem is not BoardData template) return;
+            _updating = true;
+            try
+            {
+                if (ReferenceEquals(template, NewSetup))
+                {
+                    _chassis = new List<ChassisData>();
+                    BoardSetup.Resize(_chassis, 1, IsThreePhase);
+                }
+                else
+                {
+                    _chassis = BoardSetup.CopySetup(template, string.Empty).Chassis;
+                    if (_chassis.Count == 0) BoardSetup.Resize(_chassis, 1, template.Supply == SupplyType.ThreePhase);
+                    ThreePhaseRadio.IsChecked = template.Supply == SupplyType.ThreePhase;
+                    SinglePhaseRadio.IsChecked = template.Supply != SupplyType.ThreePhase;
+                }
+                LoadQuickSetup();
+            }
+            finally
+            {
+                _updating = false;
+            }
+            RefreshList();
+        }
+
+        private void LoadQuickSetup()
+        {
+            ChassisData first = _chassis[0];
+            ChassisCountCombo.SelectedItem = Math.Min(_chassis.Count, BoardSetup.MaxChassis);
+            var poles = StandardPoles.ToList();
+            foreach (ChassisData chassis in _chassis)
+                if (!poles.Contains(chassis.MaxPoles)) poles.Add(chassis.MaxPoles);
+            poles.Sort();
+            PolesCombo.ItemsSource = poles;
+            PolesCombo.SelectedItem = first.MaxPoles;
+            PrefixBox.Text = first.Prefix;
+            ComboBoxItem? separator = SeparatorCombo.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(item => (string)item.Tag == first.Separator);
+            if (separator == null)
+            {
+                separator = new ComboBoxItem { Content = $"Custom ( {first.Separator} )", Tag = first.Separator };
+                SeparatorCombo.Items.Add(separator);
+            }
+            SeparatorCombo.SelectedItem = separator;
+        }
+
+        private void Supply_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_updating || ChassisList == null) return;
+            BoardSetup.ApplySupply(_chassis, IsThreePhase);
+            RefreshList();
+        }
+
+        private void ChassisCountCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updating || ChassisCountCombo.SelectedItem is not int count) return;
+            try
+            {
+                BoardSetup.Resize(_chassis, count, IsThreePhase);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
+            {
+                MessageBox.Show(ex.Message, "Chassis", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            RefreshList();
+        }
+
+        private void ApplyAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (PolesCombo.SelectedItem is not int poles) return;
+            try
+            {
+                BoardSetup.ApplyToAll(_chassis, poles, PrefixBox.Text.Trim(),
+                    (SeparatorCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? string.Empty);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
+            {
+                MessageBox.Show(ex.Message, "Invalid Chassis", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            RefreshList();
+        }
+
+        private void EditChassis_Click(object sender, RoutedEventArgs e) => EditSelected();
+
+        private void ChassisList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+            EditSelected();
+
+        private void EditSelected()
+        {
+            int index = ChassisList.SelectedIndex;
+            if (index < 0 || index >= _chassis.Count)
+            {
+                MessageBox.Show("Select a chassis to edit.", "Edit Chassis");
+                return;
+            }
+            var preview = new BoardData { Chassis = _chassis.ToList() };
+            var dialog = new ChassisConfigDialog(_chassis[index], allowThreePhase: IsThreePhase, board: preview)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+            if (!dialog.Confirmed || dialog.Result == null) return;
+            _chassis[index] = dialog.Result;
+            RefreshList(index);
+        }
+
+        private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveSelected(-1);
+        private void MoveDown_Click(object sender, RoutedEventArgs e) => MoveSelected(1);
+
+        private void MoveSelected(int offset)
+        {
+            int index = ChassisList.SelectedIndex;
+            int target = index + offset;
+            if (index < 0 || target < 0 || target >= _chassis.Count) return;
+            (_chassis[index], _chassis[target]) = (_chassis[target], _chassis[index]);
+            RefreshList(target);
+        }
+
+        private void RefreshList(int selected = -1)
+        {
+            var board = new BoardData { Chassis = _chassis };
+            ChassisList.ItemsSource = _chassis.Select((chassis, i) => Describe(board, chassis, i)).ToList();
+            ChassisList.SelectedIndex = selected;
+        }
+
+        private static string Describe(BoardData board, ChassisData chassis, int index)
+        {
+            string phase = chassis.PhaseLabels.Count >= 3 ? "3φ" : "1φ";
+            string range;
+            try
+            {
+                List<PoleAssignment> labels = CircuitLabelCalculator.Calculate(board, chassis);
+                range = labels.Count == 0 ? "-" : $"{labels[0].DisplayLabel} … {labels[labels.Count - 1].DisplayLabel}";
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
+            {
+                range = "invalid: " + ex.Message;
+            }
+            return $"{index + 1,2}. {chassis.Name,-12} {phase} {chassis.MaxPoles,2}p  {range}";
+        }
 
         private void Add_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(NameBox.Text))
+            string name = NameBox.Text.Trim();
+            if (name.Length == 0)
             {
                 MessageBox.Show("Please enter a board name.");
                 return;
             }
-            BoardName = NameBox.Text.Trim();
-            IsThreePhase = ThreePhaseRadio.IsChecked == true;
+            if (BoardSetup.NameExists(_existingNames, name))
+            {
+                MessageBox.Show($"A board named '{name}' already exists. Choose a unique name.",
+                    "Add Board", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var board = new BoardData
+            {
+                BoardGuid = Guid.NewGuid(),
+                DisplayName = name,
+                Supply = IsThreePhase ? SupplyType.ThreePhase : SupplyType.SinglePhase,
+                Chassis = _chassis
+            };
+            try
+            {
+                foreach (ChassisData chassis in board.Chassis)
+                {
+                    if (chassis.PhaseLabels.Count >= 3 && !IsThreePhase)
+                        throw new ArgumentException($"Chassis '{chassis.Name}' is three phase but the board is single phase.");
+                    CircuitLabelCalculator.Calculate(board, chassis);
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException)
+            {
+                MessageBox.Show(ex.Message, "Invalid Chassis", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            Result = board;
             Confirmed = true;
             DialogResult = true;
         }
