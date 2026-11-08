@@ -5,6 +5,9 @@ Circuiting is a Revit add-in with a dockable WPF panel for managing
 electrical circuits. Circuit data is stored in the project using Revit
 Extensible Storage.
 
+For the proposed native Revit panel integration, see the
+[integration plan](./NATIVE-REVIT-PANEL-INTEGRATION.md). It is not yet implemented.
+
 ## Supported builds
 
 | Revit | Configurations | Target framework |
